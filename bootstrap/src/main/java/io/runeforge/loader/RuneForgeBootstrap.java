@@ -48,7 +48,11 @@ public final class RuneForgeBootstrap {
     }
 
     static ClassLoader findRuntimeLoader(Instrumentation instrumentation) {
-        for (Class<?> loaded : instrumentation.getAllLoadedClasses()) {
+        return findRuntimeLoader(instrumentation.getAllLoadedClasses());
+    }
+
+    static ClassLoader findRuntimeLoader(Class<?>[] loadedClasses) {
+        for (Class<?> loaded : loadedClasses) {
             if (RUNTIME_CLASS.equals(loaded.getName())) {
                 ClassLoader loader = loaded.getClassLoader();
                 return loader != null ? loader : ClassLoader.getSystemClassLoader();

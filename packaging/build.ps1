@@ -89,4 +89,4 @@ Rune-Forge-Script-Class: io.runeforge.scripts.combat.CombatScript
 & jar cfm "$Dist\scripts\RuneForge-Combat.jar" $CombatManifest -C "$Build\combat" .
 if ($LASTEXITCODE -ne 0) { throw "Combat packaging failed." }
 
-Write-Host "Rune Forge v1.0.4 build and self-tests passed."
+Write-Host "Rune Forge v1.0.5 build and self-tests passed."

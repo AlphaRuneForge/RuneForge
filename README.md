@@ -1,6 +1,6 @@
 # Rune Forge
 
-**Current release: v1.0.4**
+**Current release: v1.0.5**
 
 Rune Forge is a modular Java script loader with a portable Windows launcher.
 The loader and bundled scripts are separated so scripts can be updated without
@@ -27,7 +27,7 @@ changing the loader.
 
 Rune Forge does not redistribute a game client or game-client launcher.
 
-1. Extract `Rune-Forge-v1.0.4-Windows.zip`.
+1. Extract `Rune-Forge-v1.0.5-Windows.zip`.
 2. Obtain a compatible client launcher separately.
 3. Save it exactly as:
 
@@ -50,13 +50,12 @@ Adoptium API before Rune Forge extracts or executes it.
 Requirements:
 
 - JDK 11+ (JDK 21 recommended)
-- Gradle 8.10+ for the Gradle build, or PowerShell plus a JDK for the fallback
-  build script
+- JDK 11+ (JDK 21 recommended). The repository includes the Gradle wrapper; a global Gradle installation is not required
 
 Gradle:
 
 ```powershell
-gradle clean build
+.\gradlew.bat clean build
 ```
 
 PowerShell fallback:
@@ -85,7 +84,7 @@ powershell -ExecutionPolicy Bypass -File .\packaging\package-release.ps1
 This creates:
 
 ```text
-build/Rune-Forge-v1.0.4-Windows.zip
+build/Rune-Forge-v1.0.5-Windows.zip
 ```
 
 The packaging script runs a release audit and rejects unexpected JAR/ZIP files.

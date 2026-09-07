@@ -88,7 +88,7 @@ function Run-NativeProcess([string]$FileName, [string]$Arguments, [string]$Label
 }
 
 try {
-    Log "Rune Forge v1.0.4 startup"
+    Log "Rune Forge v1.0.5 startup"
     New-Item -ItemType Directory -Force -Path $RuneForgeHome,$ScriptsDir | Out-Null
 
     if (-not (Test-Path $LoaderSource)) {

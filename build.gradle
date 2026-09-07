@@ -1,35 +1,34 @@
 plugins {
-    id 'base'
+    id 'java'
 }
-
-def java11 = JavaVersion.VERSION_11
 
 sourceSets {
     api {
         java.srcDir 'script-api/src/main/java'
     }
-    bootstrap {
-        java.srcDir 'bootstrap/src/main/java'
-        compileClasspath += sourceSets.loader.output + sourceSets.api.output
-    }
     loader {
         java.srcDir 'loader/src/main/java'
-        compileClasspath += sourceSets.api.output
+    }
+    bootstrap {
+        java.srcDir 'bootstrap/src/main/java'
     }
     example {
         java.srcDir 'scripts/example/src/main/java'
-        compileClasspath += sourceSets.api.output
     }
     combat {
         java.srcDir 'scripts/combat/src/main/java'
-        compileClasspath += sourceSets.api.output
     }
     selfTest {
         java.srcDir 'tests/src/main/java'
-        compileClasspath += sourceSets.api.output
-        runtimeClasspath += output + compileClasspath
     }
 }
+
+sourceSets.loader.compileClasspath += sourceSets.api.output
+sourceSets.bootstrap.compileClasspath += sourceSets.api.output + sourceSets.loader.output
+sourceSets.example.compileClasspath += sourceSets.api.output
+sourceSets.combat.compileClasspath += sourceSets.api.output
+sourceSets.selfTest.compileClasspath += sourceSets.api.output
+sourceSets.selfTest.runtimeClasspath += sourceSets.api.output + sourceSets.selfTest.output
 
 tasks.named('compileApiJava', JavaCompile) {
     options.release = 11
@@ -41,9 +40,8 @@ tasks.named('compileLoaderJava', JavaCompile) {
 }
 
 tasks.named('compileBootstrapJava', JavaCompile) {
-    dependsOn tasks.named('compileLoaderJava')
+    dependsOn tasks.named('compileApiJava'), tasks.named('compileLoaderJava')
     options.release = 8
-    classpath = sourceSets.loader.output + sourceSets.api.output
 }
 
 tasks.named('compileExampleJava', JavaCompile) {
@@ -65,9 +63,9 @@ def distDir = layout.projectDirectory.dir('dist')
 def scriptsDistDir = layout.projectDirectory.dir('dist/scripts')
 
 tasks.register('loaderJar', Jar) {
-    dependsOn tasks.named('compileApiJava')
-    dependsOn tasks.named('compileLoaderJava')
-    dependsOn tasks.named('compileBootstrapJava')
+    dependsOn tasks.named('compileApiJava'),
+              tasks.named('compileLoaderJava'),
+              tasks.named('compileBootstrapJava')
     archiveFileName = 'RuneForge-Loader.jar'
     destinationDirectory = distDir
     from sourceSets.api.output
@@ -89,8 +87,7 @@ tasks.register('exampleJar', Jar) {
     manifest {
         attributes(
             'Manifest-Version': '1.0',
-            'Rune-Forge-Script-Class':
-                'io.runeforge.scripts.example.ExampleScript'
+            'Rune-Forge-Script-Class': 'io.runeforge.scripts.example.ExampleScript'
         )
     }
 }
@@ -103,8 +100,7 @@ tasks.register('combatJar', Jar) {
     manifest {
         attributes(
             'Manifest-Version': '1.0',
-            'Rune-Forge-Script-Class':
-                'io.runeforge.scripts.combat.CombatScript'
+            'Rune-Forge-Script-Class': 'io.runeforge.scripts.combat.CombatScript'
         )
     }
 }
@@ -124,16 +120,11 @@ tasks.named('clean') {
 }
 
 tasks.named('assemble') {
-    dependsOn tasks.named('loaderJar')
-    dependsOn tasks.named('exampleJar')
-    dependsOn tasks.named('combatJar')
+    dependsOn tasks.named('loaderJar'),
+              tasks.named('exampleJar'),
+              tasks.named('combatJar')
 }
 
 tasks.named('check') {
     dependsOn tasks.named('selfTest')
-}
-
-tasks.named('build') {
-    dependsOn tasks.named('assemble')
-    dependsOn tasks.named('check')
 }

@@ -16,12 +16,9 @@ jobs:
           distribution: temurin
           java-version: '21'
 
-      - uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '8.10.2'
-
-      - name: Build and test
-        run: gradle build
+      - name: Build and test through Gradle Wrapper
+        shell: powershell
+        run: .\gradlew.bat clean build
 
       - name: Build Windows release
         shell: powershell
@@ -29,4 +26,4 @@ jobs:
 
       - name: Audit release contents
         shell: powershell
-        run: .\packaging\audit-release.ps1 -ReleaseZip .\build\Rune-Forge-v1.0.4-Windows.zip
+        run: .\packaging\audit-release.ps1 -ReleaseZip .\build\Rune-Forge-v1.0.5-Windows.zip

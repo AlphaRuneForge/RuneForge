@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.0.5
+
+- Fixed Gradle by applying the Java plugin instead of the Base plugin.
+- Declared loader before bootstrap and configured cross-source-set classpaths after creation.
+- Added checked-in wrapper scripts, wrapper properties, and wrapper bootstrap JAR.
+- Made `gradlew` executable in the source archive.
+- CI now runs the checked-in wrapper.
+- Expanded self-tests for menu-action parameter order and Attack/Take/Eat/Bury action selection.
+- Runtime compatibility still requires a controlled test against the separately obtained compatible client.
+
 ## 1.0.4
 
 - Unified launcher documentation on `client/Client-Launcher.jar`.

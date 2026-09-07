@@ -7,8 +7,8 @@ $ErrorActionPreference = "Stop"
 $Root = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 $Dist = Join-Path $Root "dist"
 $ReleaseRoot = Join-Path $Root "build\release"
-$Release = Join-Path $ReleaseRoot "Rune-Forge-v1.0.4"
-$Zip = Join-Path $Root "build\Rune-Forge-v1.0.4-Windows.zip"
+$Release = Join-Path $ReleaseRoot "Rune-Forge-v1.0.5"
+$Zip = Join-Path $Root "build\Rune-Forge-v1.0.5-Windows.zip"
 
 if (-not $SkipBuild) {
     & "$Root\packaging\build.ps1"
@@ -45,7 +45,7 @@ if (Test-Path "$Root\assets") {
 }
 
 @"
-RUNE FORGE v1.0.4 - WINDOWS RELEASE
+RUNE FORGE v1.0.5 - WINDOWS RELEASE
 
 Rune Forge does NOT include Alora, RuneLite, Jagex, or other game-client binaries.
 

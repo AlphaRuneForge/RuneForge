@@ -1,7 +1,4 @@
-#!/usr/bin/env sh
-if ! command -v gradle >/dev/null 2>&1; then
-  echo "Gradle is not installed or not on PATH." >&2
-  echo "Install Gradle 8.10 or newer, then run ./gradlew build again." >&2
-  exit 1
-fi
-exec gradle "$@"
+#!/bin/sh
+APP_HOME=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+CLASSPATH="$APP_HOME/gradle/wrapper/gradle-wrapper.jar"
+exec java -classpath "$CLASSPATH" org.gradle.wrapper.GradleWrapperMain "$@"
