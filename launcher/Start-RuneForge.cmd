@@ -1,12 +1,12 @@
 @echo off
 setlocal EnableExtensions
 cd /d "%~dp0.."
-title Rune Forge
+title Rune Forge v1.0.1
 
 set "DUMP=%CD%\RuneForge-Dump.log"
 
 > "%DUMP%" echo ============================================================
->>"%DUMP%" echo Rune Forge
+>>"%DUMP%" echo Rune Forge v1.0.1
 >>"%DUMP%" echo Started: %date% %time%
 >>"%DUMP%" echo Folder: %CD%
 >>"%DUMP%" echo ============================================================

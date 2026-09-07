@@ -22,6 +22,7 @@ import java.util.jar.JarFile;
 import java.util.jar.Manifest;
 
 public final class RuneForgeLoader {
+    private static final String VERSION = "1.0.1";
     private static volatile boolean started;
 
     private static Client client;
@@ -104,7 +105,7 @@ public final class RuneForgeLoader {
     }
 
     private static void createUi() {
-        frame = new JFrame("Rune Forge");
+        frame = new JFrame("Rune Forge " + VERSION);
         frame.setDefaultCloseOperation(WindowConstants.HIDE_ON_CLOSE);
 
         JPanel root = new JPanel(new BorderLayout(8, 8));
@@ -172,7 +173,7 @@ public final class RuneForgeLoader {
         frame.setVisible(true);
 
         refreshScripts();
-        log("Rune Forge loader ready.");
+        log("Rune Forge " + VERSION + " loader ready.");
     }
 
     private static void refreshScripts() {

@@ -234,15 +234,8 @@ public final class CombatScript implements RuneForgeScript {
             return false;
         }
 
-        int ratio = player.getHealthRatio();
-        int scale = player.getHealthScale();
-
-        if (ratio < 0 || scale <= 0) {
-            return false;
-        }
-
-        int hitpoints = (int) Math.ceil((double) ratio * scale / scale);
-        return hitpoints <= threshold;
+        int hitpoints = client.getBoostedSkillLevel(Skill.HITPOINTS);
+        return hitpoints > 0 && hitpoints <= threshold;
     }
 
     private boolean clickInventoryItem(String itemName) {

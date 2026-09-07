@@ -70,7 +70,7 @@ function Run-NativeProcess([string]$FileName, [string]$Arguments, [string]$Label
 }
 
 try {
-    Log "Rune Forge startup"
+    Log "Rune Forge v1.0.1 startup"
     New-Item -ItemType Directory -Force -Path $Home | Out-Null
     New-Item -ItemType Directory -Force -Path $ScriptsDir | Out-Null
 
@@ -83,8 +83,15 @@ try {
     }
 
     Copy-Item -Force $LoaderSource $LoaderJar
+    Log "Loader installed: $LoaderJar"
+    Log "Loader data directory: $Home"
 
-    Get-ChildItem (Join-Path $Root "dist\scripts") -Filter "*.jar" -File |
+    $BuiltScripts = Join-Path $Root "dist\scripts"
+    if (-not (Test-Path $BuiltScripts)) {
+        Fail "Missing script output directory: $BuiltScripts. Run packaging\build.ps1." 12
+    }
+
+    Get-ChildItem $BuiltScripts -Filter "*.jar" -File |
         ForEach-Object {
             Copy-Item -Force $_.FullName (Join-Path $ScriptsDir $_.Name)
             Log "Installed script: $($_.Name)"
@@ -143,6 +150,8 @@ try {
     }
 
     $env:JAVA_TOOL_OPTIONS = "-javaagent:`"$LoaderJar`" -Druneforge.home=`"$Home`""
+    Log "JAVA_TOOL_OPTIONS configured."
+    Log "Starting third-party launcher: $AloraLauncher"
     $launcherArgument = '-jar "' + $AloraLauncher + '"'
     $result = Run-NativeProcess $JavaExe $launcherArgument "ALORA"
 

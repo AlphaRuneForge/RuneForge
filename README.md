@@ -1,5 +1,7 @@
 # Rune Forge
 
+**Current release: v1.0.1**
+
 A modular Java script loader with a portable Windows launcher.
 
 Rune Forge keeps the loader separate from individual scripts. Scripts are ordinary JAR files with their own UI and lifecycle, so adding or updating a script does not require rebuilding the loader.
