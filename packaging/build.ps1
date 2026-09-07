@@ -90,7 +90,7 @@ Build-Script `
     "$Build\combat"
 
 Write-Host ""
-Write-Host "Rune Forge v1.0.2 build complete:"
+Write-Host "Rune Forge v1.0.3 build complete:"
 Write-Host "  $Dist\RuneForge-Loader.jar"
 Write-Host "  $Dist\scripts\RuneForge-Example.jar"
 Write-Host "  $Dist\scripts\RuneForge-Combat.jar"

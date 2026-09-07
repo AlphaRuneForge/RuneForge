@@ -25,3 +25,7 @@ runtime-temp/
 
 # Local overrides
 local.properties
+
+# User-supplied third-party client binaries
+client/*.jar
+client/*.zip

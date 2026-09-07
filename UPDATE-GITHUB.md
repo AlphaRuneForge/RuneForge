@@ -8,21 +8,21 @@ Then run:
 ```powershell
 git status
 git add -A
-git commit -m "Release Rune Forge v1.0.2"
+git commit -m "Release Rune Forge v1.0.3"
 git push origin main
 ```
 
 Create the release tag:
 
 ```powershell
-git tag -a v1.0.2 -m "Rune Forge v1.0.2"
-git push origin v1.0.2
+git tag -a v1.0.3 -m "Rune Forge v1.0.3"
+git push origin v1.0.3
 ```
 
-On GitHub, create a release from tag `v1.0.2` and attach:
+On GitHub, create a release from tag `v1.0.3` and attach:
 
 ```text
-Rune-Forge-v1.0.2-Windows.zip
+Rune-Forge-v1.0.3-Windows.zip
 ```
 
 Do not commit downloaded Java runtimes, logs, `alora-data`, or third-party client

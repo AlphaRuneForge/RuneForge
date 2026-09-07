@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.3
+
+- Removed all Alora, RuneLite, and Jagex binaries from the public Windows release.
+- Public release now contains Rune Forge-owned loader/scripts/launcher assets only.
+- The launcher requires the user to supply their own compatible client launcher locally.
+- Added release-time checks that reject third-party client binaries from the package.
+
 ## 1.0.2
 
 - Fixed Windows startup failure caused by assigning to PowerShell's read-only

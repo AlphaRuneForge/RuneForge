@@ -8,7 +8,7 @@ $RuneForgeHome = Join-Path $Root "alora-data"
 $ScriptsDir = Join-Path $RuneForgeHome "scripts"
 $LoaderSource = Join-Path $Root "dist\RuneForge-Loader.jar"
 $LoaderJar = Join-Path $RuneForgeHome "RuneForge-Loader.jar"
-$AloraLauncher = Join-Path $Root "vendor\Alora-Launcher.jar"
+$ClientLauncher = Join-Path $Root "client\Client-Launcher.jar"
 $RuntimeZip = Join-Path $Root "temurin21.zip"
 $RuntimeTemp = Join-Path $Root "runtime-temp"
 $JavaUrl = "https://api.adoptium.net/v3/binary/latest/21/ga/windows/x64/jre/hotspot/normal/eclipse"
@@ -70,7 +70,7 @@ function Run-NativeProcess([string]$FileName, [string]$Arguments, [string]$Label
 }
 
 try {
-    Log "Rune Forge v1.0.2 startup"
+    Log "Rune Forge v1.0.3 startup"
     New-Item -ItemType Directory -Force -Path $RuneForgeHome | Out-Null
     New-Item -ItemType Directory -Force -Path $ScriptsDir | Out-Null
 
@@ -78,7 +78,7 @@ try {
         Fail "Missing $LoaderSource. Run packaging\build.ps1 first." 10
     }
 
-    if (-not (Test-Path $AloraLauncher)) {
+    if (-not (Test-Path $ClientLauncher)) {
         Fail "Missing vendor\Alora-Launcher.jar. See vendor\README.md." 11
     }
 
@@ -151,8 +151,8 @@ try {
 
     $env:JAVA_TOOL_OPTIONS = "-javaagent:`"$LoaderJar`" -Druneforge.home=`"$RuneForgeHome`""
     Log "JAVA_TOOL_OPTIONS configured."
-    Log "Starting third-party launcher: $AloraLauncher"
-    $launcherArgument = '-jar "' + $AloraLauncher + '"'
+    Log "Starting user-supplied client launcher: $ClientLauncher"
+    $launcherArgument = '-jar "' + $ClientLauncher + '"'
     $result = Run-NativeProcess $JavaExe $launcherArgument "ALORA"
 
     if ($result.ExitCode -ne 0) {

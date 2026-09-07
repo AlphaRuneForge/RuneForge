@@ -1,6 +1,6 @@
 # Rune Forge
 
-**Current release: v1.0.2**
+**Current release: v1.0.3**
 
 A modular Java script loader with a portable Windows launcher.
 
@@ -97,3 +97,15 @@ Rune Forge is not affiliated with RuneLite, Jagex, or Alora. Third-party client 
 ## License
 
 MIT. See [LICENSE](LICENSE).
+
+
+## Client requirement
+
+Rune Forge does not ship a game client or game-client launcher. Before using the
+Windows package, place a compatible launcher that you obtained separately at:
+
+```text
+client/Client-Launcher.jar
+```
+
+That file is intentionally excluded from the repository and release archive.

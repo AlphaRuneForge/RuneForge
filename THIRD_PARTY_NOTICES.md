@@ -1,11 +1,11 @@
 # Third-party notices
 
-Rune Forge itself is licensed under the MIT License.
+Rune Forge is licensed under the MIT License.
 
-The Windows release may include or launch third-party software required to start
-the supported game client. That software is not part of Rune Forge, is not
-licensed under Rune Forge's MIT License, and remains subject to its respective
-owner's terms and licenses.
+Rune Forge does not redistribute Alora, RuneLite, Jagex, or other game-client
+binaries in its public source or Windows release packages.
 
-The source repository intentionally ignores third-party JAR files under
-`vendor/`.
+Rune Forge can interoperate with a compatible client that the user obtains
+separately. Any such third-party software remains subject to its owner's terms,
+licenses, and distribution policies and is not covered by the Rune Forge MIT
+License.
