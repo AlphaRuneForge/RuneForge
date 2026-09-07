@@ -27,23 +27,24 @@ public final class GroundItemsTest {
         FakeClient raw = new FakeClient();
         RuneForgeClient client = new RuneForgeClient(raw, runtime);
         if (!client.take(client.groundItems(12).get(0))
-            || !"GROUND_ITEM_THIRD_OPTION".equals(String.valueOf(raw.action))
+            || !"GROUND_ITEM_FIRST_OPTION".equals(String.valueOf(raw.action))
             || raw.param0 != 3 || raw.param1 != 4 || raw.identifier != 526
-            || !"Take".equals(raw.option)) {
-            throw new AssertionError("Pickup must dispatch third option with scene coordinates and item ID");
+            || !"Take".equals(raw.option) || !"<col=ff9040>Bones".equals(raw.target)) {
+            throw new AssertionError("Pickup must dispatch first option with scene coordinates and item ID");
         }
-        System.out.println("Pickup dispatch uses the installed client's third-option enum and correct parameters.");
+        System.out.println("Pickup dispatch uses the installed client's first-option enum and correct parameters.");
     }
     public static final class FakeClient {
         Object action;
         int param0, param1, identifier;
-        String option;
+        String option, target;
         public void menuAction(int p0, int p1, Object opcode, int id, int itemId, String option, String target) {
             this.param0 = p0;
             this.param1 = p1;
             this.action = opcode;
             this.identifier = id;
             this.option = option;
+            this.target = target;
         }
         final Scene scene = new Scene();
         public Player getLocalPlayer() { return new Player(); }

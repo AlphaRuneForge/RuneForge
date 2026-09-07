@@ -51,7 +51,7 @@ public final class CombatScript implements RuneForgeScript {
 
     @Override
     public String getVersion() {
-        return "1.0.9";
+        return "1.0.11";
     }
 
     @Override
@@ -315,8 +315,9 @@ public final class CombatScript implements RuneForgeScript {
 
         RuneForgeClient.GroundItemRef loot = findNearestLoot(client, currentConfig);
         if (loot != null) {
-            beginAttempt(client, "Take", groundDetail(loot) + " opcode=GROUND_ITEM_THIRD_OPTION");
+            beginAttempt(client, "Take", groundDetail(loot) + " opcode=GROUND_ITEM_FIRST_OPTION");
             boolean accepted = client.take(loot);
+            debug("MENU_TRACE", "id=" + actionSequence + " " + client.lastMenuDispatchTrace());
             debug("DISPATCH_RETURN", "id=" + actionSequence + " returned=" + accepted + " (not server confirmation)");
             if (accepted) {
                 markAction("Take requested: " + loot.name);

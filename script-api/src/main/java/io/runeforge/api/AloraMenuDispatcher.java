@@ -1,25 +1,31 @@
 package io.runeforge.api;
 
-import java.io.InputStream;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
-import java.security.MessageDigest;
 
-/** Compatibility adapter for the inspected Alora build; never guesses after a client update. */
+/** Compatibility adapter for Alora's RuneLite-backed menu dispatcher. */
 final class AloraMenuDispatcher {
     private final Constructor<?> entryConstructor;
     private final Method dispatch;
 
     AloraMenuDispatcher(ClassLoader loader) {
         try {
-            verify(loader, "com/alora/dG.class", "19ac18a833025cdc8c6b057e409a53641b05d477650544265a4ce3226649c170");
-            verify(loader, "com/alora/aW.class", "db3600c2212389115a949c0f98c8b01b8091d8369d17600838f556898a2adbc3");
             Class<?> entry = Class.forName("com.alora.aW", false, loader);
             Class<?> world = Class.forName("com.alora.WorldView", false, loader);
             Class<?> dispatcher = Class.forName("com.alora.dG", false, loader);
+
+            // Resolve the stable MenuEntry-shaped contract instead of pinning the whole
+            // obfuscated classes to one SHA-256. Alora can rebuild unrelated bytecode
+            // without changing this action path.
             entryConstructor = entry.getConstructor(String.class, String.class, int.class,
                 long.class, int.class, int.class, boolean.class, int.class);
+            requireMethod(entry, "getParam0");
+            requireMethod(entry, "getParam1");
+            requireMethod(entry, "getIdentifier");
+            requireMethod(entry, "getType");
+            requireMethod(entry, "getWorldViewId");
+
             Method found = null;
             for (Method method : dispatcher.getDeclaredMethods()) {
                 Class<?>[] parameters = method.getParameterTypes();
@@ -37,8 +43,8 @@ final class AloraMenuDispatcher {
         }
     }
 
-    void invoke(Object client, Object action, int param0, int param1,
-                int identifier, String option, String target) {
+    String invoke(Object client, Object action, int param0, int param1,
+                  int identifier, String option, String target) {
         Object world = Reflection.invoke(client, "getTopLevelWorldView");
         if (world == null) throw new IllegalStateException("No active world for menu action");
         int worldId = Reflection.intValue(Reflection.invoke(world, "getId"), -1);
@@ -46,24 +52,35 @@ final class AloraMenuDispatcher {
         try {
             Object entry = entryConstructor.newInstance(option, target, opcode,
                 (long) identifier, param0, param1, false, worldId);
+            String before = describe(entry, worldId, opcode);
             // The normal click handler posts MenuOptionClicked and respects event consumption.
             dispatch.invoke(null, entry, world);
+            return "before={" + before + "} after={" + describe(entry, worldId, opcode) + "}";
         } catch (ReflectiveOperationException e) {
             throw new IllegalStateException("Alora action dispatch failed: " + option + " " + target, e);
         }
     }
 
-    private static void verify(ClassLoader loader, String resource, String expected) {
-        try (InputStream stream = loader.getResourceAsStream(resource)) {
-            if (stream == null) throw new IllegalStateException("Missing " + resource);
-            byte[] digest = MessageDigest.getInstance("SHA-256").digest(stream.readAllBytes());
-            StringBuilder actual = new StringBuilder();
-            for (byte value : digest) actual.append(String.format("%02x", value & 255));
-            if (!expected.equals(actual.toString())) {
-                throw new IllegalStateException("Alora client changed; RuneForge action adapter needs updating");
-            }
-        } catch (java.io.IOException | java.security.NoSuchAlgorithmException e) {
-            throw new IllegalStateException("Unable to verify Alora action adapter", e);
-        }
+    private static String describe(Object entry, int requestedWorldId, int requestedOpcode) {
+        return "option=" + quote(Reflection.invoke(entry, "getOption"))
+            + " target=" + quote(Reflection.invoke(entry, "getTarget"))
+            + " requestedOpcode=" + requestedOpcode
+            + " type=" + String.valueOf(Reflection.invoke(entry, "getType"))
+            + " identifier=" + Reflection.intValue(Reflection.invoke(entry, "getIdentifier"), -1)
+            + " param0=" + Reflection.intValue(Reflection.invoke(entry, "getParam0"), -1)
+            + " param1=" + Reflection.intValue(Reflection.invoke(entry, "getParam1"), -1)
+            + " widgetId=" + Reflection.intValue(Reflection.invoke(entry, "getWidgetId"), -1)
+            + " itemId=" + Reflection.intValue(Reflection.invoke(entry, "getItemId"), -1)
+            + " requestedWorldViewId=" + requestedWorldId
+            + " entryWorldViewId=" + Reflection.intValue(Reflection.invoke(entry, "getWorldViewId"), -1)
+            + " forceLeftClick=" + String.valueOf(Reflection.invoke(entry, "isForceLeftClick"));
+    }
+
+    private static String quote(Object value) {
+        return "\"" + String.valueOf(value).replace("\"", "\\\"") + "\"";
+    }
+
+    private static void requireMethod(Class<?> type, String name) throws NoSuchMethodException {
+        type.getMethod(name);
     }
 }

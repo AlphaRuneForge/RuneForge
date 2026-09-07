@@ -11,6 +11,7 @@ public final class RuneForgeClient {
     private final Object client;
     private final ClassLoader runtimeLoader;
     private AloraMenuDispatcher aloraDispatcher;
+    private volatile String lastMenuDispatchTrace = "none";
 
     public RuneForgeClient(Object client, ClassLoader runtimeLoader) {
         this.client = client;
@@ -168,13 +169,13 @@ public final class RuneForgeClient {
         if (item == null || item.sceneX < 0 || item.sceneY < 0) return false;
 
         return menuAction(
-            "GROUND_ITEM_THIRD_OPTION",
+            "GROUND_ITEM_FIRST_OPTION",
             item.sceneX,
             item.sceneY,
             item.id,
             0,
             "Take",
-            item.name);
+            groundItemTarget(item.name));
     }
 
     private List<Object> tileItems(Object tile) {
@@ -262,7 +263,8 @@ public final class RuneForgeClient {
 
         if (client.getClass().getName().equals("com.alora.Alora")) {
             if (aloraDispatcher == null) aloraDispatcher = new AloraMenuDispatcher(runtimeLoader);
-            aloraDispatcher.invoke(client, action, param0, param1, identifier, option, target);
+            lastMenuDispatchTrace = aloraDispatcher.invoke(
+                client, action, param0, param1, identifier, option, target);
             return true;
         }
 
@@ -298,6 +300,16 @@ public final class RuneForgeClient {
             throw new IllegalStateException(
                 "Client menu action failed: " + option + " " + target, e);
         }
+    }
+
+    public String lastMenuDispatchTrace() {
+        return lastMenuDispatchTrace;
+    }
+
+    static String groundItemTarget(String name) {
+        if (name == null || name.isBlank()) return "";
+        if (name.startsWith("<col=")) return name;
+        return "<col=ff9040>" + name;
     }
 
     private int inventoryWidgetId() {
