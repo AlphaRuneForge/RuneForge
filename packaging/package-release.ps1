@@ -1,12 +1,22 @@
-﻿$ErrorActionPreference = "Stop"
+﻿param(
+    [switch]$SkipBuild
+)
+
+$ErrorActionPreference = "Stop"
 
 $Root = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 $Dist = Join-Path $Root "dist"
 $ReleaseRoot = Join-Path $Root "build\release"
-$Release = Join-Path $ReleaseRoot "Rune-Forge-v1.0.3"
-$Zip = Join-Path $Root "build\Rune-Forge-v1.0.3-Windows.zip"
+$Release = Join-Path $ReleaseRoot "Rune-Forge-v1.0.4"
+$Zip = Join-Path $Root "build\Rune-Forge-v1.0.4-Windows.zip"
 
-& "$Root\packaging\build.ps1"
+if (-not $SkipBuild) {
+    & "$Root\packaging\build.ps1"
+}
+
+if (-not (Test-Path "$Dist\RuneForge-Loader.jar")) {
+    throw "Build output is missing. Run packaging\build.ps1."
+}
 
 Remove-Item -Recurse -Force $Release -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force -Path `
@@ -29,35 +39,32 @@ Set-Content "$Release\Start-RuneForge.ps1" $Ps1 -Encoding UTF8
 Copy-Item "$Dist\RuneForge-Loader.jar" "$Release\dist\"
 Copy-Item "$Dist\scripts\*.jar" "$Release\dist\scripts\"
 Copy-Item "$Root\README.md","$Root\LICENSE","$Root\THIRD_PARTY_NOTICES.md","$Root\CHANGELOG.md" "$Release\"
+
 if (Test-Path "$Root\assets") {
     Copy-Item "$Root\assets\*" "$Release\assets\" -ErrorAction SilentlyContinue
 }
 
 @"
-RUNE FORGE v1.0.3 - WINDOWS RELEASE
+RUNE FORGE v1.0.4 - WINDOWS RELEASE
 
 Rune Forge does NOT include Alora, RuneLite, Jagex, or other game-client binaries.
 
 SETUP
-1. Extract the entire ZIP.
-2. Obtain your compatible client launcher separately.
-3. Create/use the client folder and save that launcher as:
+1. Extract the ZIP.
+2. Obtain a compatible client launcher separately.
+3. Save it exactly as:
        client\Client-Launcher.jar
 4. Run Start-RuneForge.cmd.
 
-First launch downloads a private Temurin Java 21 runtime if required.
-"@ | Set-Content "$Release\README-FIRST.txt" -Encoding UTF8
+The first run downloads Temurin Java 21 directly from Adoptium and verifies
+the downloaded archive against the SHA-256 checksum published in Adoptium's
+metadata before extraction.
 
-# Safety check: only Rune Forge-produced JARs may be present.
-$Unexpected = Get-ChildItem $Release -Recurse -File |
-    Where-Object {
-        $_.Extension -in ".jar",".zip" -and
-        $_.FullName -notlike "$Release\dist\RuneForge-Loader.jar" -and
-        $_.FullName -notlike "$Release\dist\scripts\RuneForge-*.jar"
-    }
-if ($Unexpected) {
-    throw "Release contains an unexpected binary/archive: $($Unexpected.FullName -join ', ')"
-}
+LOGS
+- RuneForge-Dump.log
+- runeforge-data\runeforge-bootstrap.log
+- runeforge-data\rune-forge.log
+"@ | Set-Content "$Release\README-FIRST.txt" -Encoding UTF8
 
 $HashLines = Get-ChildItem $Release -File -Recurse |
     Sort-Object FullName |
@@ -70,4 +77,7 @@ $HashLines | Set-Content "$Release\SHA256SUMS.txt" -Encoding ascii
 
 Remove-Item -Force $Zip -ErrorAction SilentlyContinue
 Compress-Archive -Path "$Release\*" -DestinationPath $Zip
+
+& "$Root\packaging\audit-release.ps1" -ReleaseZip $Zip
+
 Write-Host "Release created: $Zip"

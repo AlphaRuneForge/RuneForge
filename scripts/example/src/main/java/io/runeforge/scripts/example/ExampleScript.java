@@ -13,7 +13,7 @@ public final class ExampleScript implements RuneForgeScript {
 
     @Override
     public String getVersion() {
-        return "1.0.0";
+        return "1.0.4";
     }
 
     @Override
@@ -24,17 +24,18 @@ public final class ExampleScript implements RuneForgeScript {
 
     @Override
     public void onStart() {
-        context.log("Example script started.");
+        if (context != null) context.log("Example script started.");
     }
 
     @Override
     public void onStop() {
-        context.log("Example script stopped.");
+        if (context != null) context.log("Example script stopped.");
     }
 
     @Override
     public void onUnload() {
-        context.log("Example script unloaded.");
+        RuneForgeContext old = context;
         context = null;
+        if (old != null) old.log("Example script unloaded.");
     }
 }

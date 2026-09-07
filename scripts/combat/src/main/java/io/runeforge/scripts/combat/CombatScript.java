@@ -1,19 +1,20 @@
 package io.runeforge.scripts.combat;
 
+import io.runeforge.api.RuneForgeClient;
 import io.runeforge.api.RuneForgeContext;
 import io.runeforge.api.RuneForgeScript;
-import net.runelite.api.*;
-import net.runelite.api.coords.WorldPoint;
-import net.runelite.api.widgets.Widget;
-import net.runelite.api.widgets.WidgetInfo;
-import net.runelite.api.widgets.WidgetItem;
 
 import javax.swing.*;
+import javax.swing.event.DocumentEvent;
+import javax.swing.event.DocumentListener;
 import java.awt.*;
-import java.awt.event.MouseEvent;
-import java.util.List;
-import java.util.*;
-import java.util.concurrent.*;
+import java.util.Collections;
+import java.util.LinkedHashSet;
+import java.util.Locale;
+import java.util.Set;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 
 public final class CombatScript implements RuneForgeScript {
     private static final int MAX_LOOT_DISTANCE = 12;
@@ -24,6 +25,7 @@ public final class CombatScript implements RuneForgeScript {
     private ScheduledExecutorService scheduler;
     private volatile boolean running;
     private volatile long lastActionAt;
+    private volatile CombatConfig config = CombatConfig.defaults();
 
     private JFrame frame;
     private JTextField targetField;
@@ -40,7 +42,7 @@ public final class CombatScript implements RuneForgeScript {
 
     @Override
     public String getVersion() {
-        return "1.0.0";
+        return "1.0.4";
     }
 
     @Override
@@ -52,7 +54,11 @@ public final class CombatScript implements RuneForgeScript {
 
     @Override
     public synchronized void onStart() {
-        if (running) {
+        boolean schedulerAlive = scheduler != null
+            && !scheduler.isShutdown()
+            && !scheduler.isTerminated();
+
+        if (running && schedulerAlive) {
             bringToFront();
             return;
         }
@@ -65,13 +71,13 @@ public final class CombatScript implements RuneForgeScript {
         });
 
         scheduler.scheduleWithFixedDelay(
-            this::requestTick,
+            this::requestTickSafely,
             0L,
             LOOP_DELAY_MS,
             TimeUnit.MILLISECONDS);
 
         setStatus("Running");
-        context.log("Combat script started.");
+        if (context != null) context.log("Combat script started.");
     }
 
     @Override
@@ -91,6 +97,7 @@ public final class CombatScript implements RuneForgeScript {
 
     @Override
     public void onUnload() {
+        RuneForgeContext oldContext = context;
         onStop();
 
         SwingUtilities.invokeLater(() -> {
@@ -100,12 +107,14 @@ public final class CombatScript implements RuneForgeScript {
             }
         });
 
-        context.log("Combat script unloaded.");
+        if (oldContext != null) {
+            oldContext.log("Combat script unloaded.");
+        }
         context = null;
     }
 
     private void createUi() {
-        frame = new JFrame("Rune Forge - Combat");
+        frame = new JFrame("Rune Forge - Combat 1.0.4");
         frame.setDefaultCloseOperation(WindowConstants.HIDE_ON_CLOSE);
 
         JPanel form = new JPanel(new GridBagLayout());
@@ -150,8 +159,23 @@ public final class CombatScript implements RuneForgeScript {
         footer.add(buttons, BorderLayout.WEST);
         footer.add(statusLabel, BorderLayout.EAST);
 
-        startButton.addActionListener(e -> onStart());
+        startButton.addActionListener(e -> {
+            captureConfigOnEdt();
+            onStart();
+        });
         stopButton.addActionListener(e -> onStop());
+
+        DocumentListener configListener = new DocumentListener() {
+            @Override public void insertUpdate(DocumentEvent e) { captureConfigOnEdt(); }
+            @Override public void removeUpdate(DocumentEvent e) { captureConfigOnEdt(); }
+            @Override public void changedUpdate(DocumentEvent e) { captureConfigOnEdt(); }
+        };
+
+        targetField.getDocument().addDocumentListener(configListener);
+        hpField.getDocument().addDocumentListener(configListener);
+        foodField.getDocument().addDocumentListener(configListener);
+        lootArea.getDocument().addDocumentListener(configListener);
+        buryBonesCheck.addItemListener(e -> captureConfigOnEdt());
 
         frame.setLayout(new BorderLayout());
         frame.add(form, BorderLayout.CENTER);
@@ -159,6 +183,8 @@ public final class CombatScript implements RuneForgeScript {
         frame.pack();
         frame.setLocationByPlatform(true);
         frame.setVisible(true);
+
+        captureConfigOnEdt();
     }
 
     private JTextField addField(
@@ -180,12 +206,51 @@ public final class CombatScript implements RuneForgeScript {
         return field;
     }
 
-    private void requestTick() {
-        if (!running || context == null) {
+    private void captureConfigOnEdt() {
+        if (!SwingUtilities.isEventDispatchThread()) {
+            SwingUtilities.invokeLater(this::captureConfigOnEdt);
             return;
         }
 
-        context.getClientThread().invokeLater(this::tick);
+        config = CombatConfig.from(
+            targetField == null ? "" : targetField.getText(),
+            hpField == null ? "" : hpField.getText(),
+            foodField == null ? "" : foodField.getText(),
+            lootArea == null ? "" : lootArea.getText(),
+            buryBonesCheck != null && buryBonesCheck.isSelected());
+    }
+
+    private void requestTickSafely() {
+        RuneForgeContext current = context;
+        if (!running || current == null) {
+            return;
+        }
+
+        try {
+            current.invokeOnClientThread(() -> {
+                try {
+                    tick();
+                } catch (Throwable t) {
+                    handleSchedulerFailure(t);
+                }
+            });
+        } catch (Throwable t) {
+            handleSchedulerFailure(t);
+        }
+    }
+
+    private synchronized void handleSchedulerFailure(Throwable t) {
+        running = false;
+        if (scheduler != null) {
+            scheduler.shutdownNow();
+            scheduler = null;
+        }
+
+        if (context != null) {
+            context.log("Combat loop stopped after error: "
+                + t.getClass().getSimpleName() + ": " + t.getMessage());
+        }
+        setStatus("Stopped after error");
     }
 
     private void tick() {
@@ -193,158 +258,98 @@ public final class CombatScript implements RuneForgeScript {
             return;
         }
 
-        Client client = context.getClient();
-        Player player = client.getLocalPlayer();
+        RuneForgeContext current = context;
+        if (current == null) return;
+
+        RuneForgeClient client = current.getGameClient();
+        RuneForgeClient.PlayerRef player = client.localPlayer();
+        CombatConfig currentConfig = config;
 
         if (player == null) {
+            setStatus("Waiting for player");
             return;
         }
 
-        if (shouldEat(client, player) && clickInventoryItem(foodName())) {
+        if (client.currentHitpoints() > 0
+            && client.currentHitpoints() <= currentConfig.eatAtHp
+            && inventoryAction(client, currentConfig.foodName, "Eat")) {
+            markAction("Eating " + currentConfig.foodName);
             return;
         }
 
-        if (player.getInteracting() != null) {
+        if (player.interacting()) {
             setStatus("In combat");
             return;
         }
 
-        GroundItemRef loot = findNearestLoot(client, player.getWorldLocation());
-        if (loot != null && clickGroundItem(client, loot)) {
+        RuneForgeClient.GroundItemRef loot = findNearestLoot(client, currentConfig);
+        if (loot != null && client.take(loot)) {
+            markAction("Taking " + loot.name);
             return;
         }
 
-        if (buryBonesCheck != null
-            && buryBonesCheck.isSelected()
-            && clickFirstBuryableBone(client)) {
-            return;
+        if (currentConfig.buryBones) {
+            RuneForgeClient.InventoryItemRef bones = firstInventoryAction(client, null, "Bury");
+            if (bones != null && client.inventoryAction(bones, "Bury")) {
+                markAction("Burying " + bones.name);
+                return;
+            }
         }
 
-        NPC target = findNearestTarget(client, player.getWorldLocation(), targetName());
-        if (target != null && clickNpc(client, target)) {
-            setStatus("Attacking " + target.getName());
+        RuneForgeClient.NpcRef target = findNearestTarget(client, player, currentConfig.targetName);
+        if (target != null && client.attack(target)) {
+            markAction("Attacking " + target.name());
         } else {
-            setStatus("Waiting for " + targetName());
+            setStatus("Waiting for " + currentConfig.targetName);
         }
     }
 
-    private boolean shouldEat(Client client, Player player) {
-        int threshold = parseInt(hpField, 20);
-        if (threshold <= 0) {
-            return false;
-        }
+    private boolean inventoryAction(
+        RuneForgeClient client,
+        String name,
+        String action) {
 
-        int hitpoints = client.getBoostedSkillLevel(Skill.HITPOINTS);
-        return hitpoints > 0 && hitpoints <= threshold;
+        RuneForgeClient.InventoryItemRef item =
+            firstInventoryAction(client, name, action);
+
+        return item != null && client.inventoryAction(item, action);
     }
 
-    private boolean clickInventoryItem(String itemName) {
-        if (itemName == null || itemName.isBlank()) {
-            return false;
+    private RuneForgeClient.InventoryItemRef firstInventoryAction(
+        RuneForgeClient client,
+        String wantedName,
+        String wantedAction) {
+
+        for (RuneForgeClient.InventoryItemRef item : client.inventoryItems()) {
+            boolean nameMatches = wantedName == null
+                || item.name.equalsIgnoreCase(wantedName);
+            if (nameMatches && item.hasAction(wantedAction)) {
+                return item;
+            }
         }
 
-        Client client = context.getClient();
-        ItemContainer inventory = client.getItemContainer(InventoryID.INVENTORY);
-        Widget inventoryWidget = client.getWidget(WidgetInfo.INVENTORY);
-
-        if (inventory == null || inventoryWidget == null) {
-            return false;
-        }
-
-        Item[] items = inventory.getItems();
-        for (int slot = 0; slot < items.length; slot++) {
-            Item item = items[slot];
-            if (item == null || item.getId() <= 0) {
-                continue;
-            }
-
-            ItemComposition composition = client.getItemComposition(item.getId());
-            if (composition == null
-                || composition.getName() == null
-                || !composition.getName().equalsIgnoreCase(itemName)) {
-                continue;
-            }
-
-            WidgetItem widgetItem = inventoryWidget.getWidgetItem(slot);
-            if (widgetItem == null) {
-                continue;
-            }
-
-            return click(widgetItem.getCanvasBounds(), "inventory " + itemName);
-        }
-
-        return false;
+        return null;
     }
 
-    private boolean clickFirstBuryableBone(Client client) {
-        ItemContainer inventory = client.getItemContainer(InventoryID.INVENTORY);
-        Widget inventoryWidget = client.getWidget(WidgetInfo.INVENTORY);
+    private RuneForgeClient.NpcRef findNearestTarget(
+        RuneForgeClient client,
+        RuneForgeClient.PlayerRef player,
+        String wantedName) {
 
-        if (inventory == null || inventoryWidget == null) {
-            return false;
-        }
-
-        Item[] items = inventory.getItems();
-        for (int slot = 0; slot < items.length; slot++) {
-            Item item = items[slot];
-            if (item == null || item.getId() <= 0) {
-                continue;
-            }
-
-            ItemComposition composition = client.getItemComposition(item.getId());
-            if (!hasInventoryAction(composition, "Bury")) {
-                continue;
-            }
-
-            WidgetItem widgetItem = inventoryWidget.getWidgetItem(slot);
-            if (widgetItem == null) {
-                continue;
-            }
-
-            return click(widgetItem.getCanvasBounds(), "bury " + composition.getName());
-        }
-
-        return false;
-    }
-
-    private boolean hasInventoryAction(ItemComposition composition, String wanted) {
-        if (composition == null || composition.getInventoryActions() == null) {
-            return false;
-        }
-
-        for (String action : composition.getInventoryActions()) {
-            if (action != null && action.equalsIgnoreCase(wanted)) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    private NPC findNearestTarget(Client client, WorldPoint origin, String wantedName) {
         if (wantedName == null || wantedName.isBlank()) {
             return null;
         }
 
-        NPC best = null;
+        RuneForgeClient.NpcRef best = null;
         int bestDistance = Integer.MAX_VALUE;
 
-        for (NPC npc : client.getNpcs()) {
-            if (npc == null || npc.isDead() || npc.getName() == null) {
+        for (RuneForgeClient.NpcRef npc : client.npcs()) {
+            if (npc.dead() || !npc.name().equalsIgnoreCase(wantedName)) {
                 continue;
             }
 
-            if (!npc.getName().equalsIgnoreCase(wantedName)) {
-                continue;
-            }
-
-            WorldPoint location = npc.getWorldLocation();
-            if (location == null) {
-                continue;
-            }
-
-            int distance = origin.distanceTo(location);
-            if (distance < bestDistance) {
+            int distance = npc.distanceTo(player);
+            if (distance >= 0 && distance < bestDistance) {
                 best = npc;
                 bestDistance = distance;
             }
@@ -353,143 +358,37 @@ public final class CombatScript implements RuneForgeScript {
         return best;
     }
 
-    private GroundItemRef findNearestLoot(Client client, WorldPoint origin) {
-        Set<String> wanted = configuredLoot();
-        if (wanted.isEmpty()) {
+    private RuneForgeClient.GroundItemRef findNearestLoot(
+        RuneForgeClient client,
+        CombatConfig currentConfig) {
+
+        if (currentConfig.lootNames.isEmpty()) {
             return null;
         }
 
-        Tile[][][] tiles = client.getScene().getTiles();
-        GroundItemRef best = null;
-        int bestDistance = Integer.MAX_VALUE;
+        RuneForgeClient.GroundItemRef best = null;
 
-        for (Tile[][] plane : tiles) {
-            if (plane == null) {
+        for (RuneForgeClient.GroundItemRef item :
+            client.groundItems(MAX_LOOT_DISTANCE)) {
+
+            if (!currentConfig.lootNames.contains(
+                item.name.toLowerCase(Locale.ROOT))) {
                 continue;
             }
 
-            for (Tile[] row : plane) {
-                if (row == null) {
-                    continue;
-                }
-
-                for (Tile tile : row) {
-                    if (tile == null || tile.getGroundItems() == null) {
-                        continue;
-                    }
-
-                    WorldPoint location = tile.getWorldLocation();
-                    int distance = origin.distanceTo(location);
-
-                    if (distance > MAX_LOOT_DISTANCE || distance >= bestDistance) {
-                        continue;
-                    }
-
-                    for (TileItem item : tile.getGroundItems()) {
-                        ItemComposition composition = client.getItemComposition(item.getId());
-                        String name = composition == null ? null : composition.getName();
-
-                        if (name != null && wanted.contains(name.toLowerCase(Locale.ROOT))) {
-                            best = new GroundItemRef(tile, item, name);
-                            bestDistance = distance;
-                            break;
-                        }
-                    }
-                }
+            if (best == null || item.distance < best.distance) {
+                best = item;
             }
         }
 
         return best;
     }
 
-    private boolean clickNpc(Client client, NPC npc) {
-        Shape hull = npc.getConvexHull();
-        if (hull == null) {
-            return false;
-        }
-
-        Rectangle bounds = hull.getBounds();
-        return click(bounds, "npc " + npc.getName());
-    }
-
-    private boolean clickGroundItem(Client client, GroundItemRef item) {
-        net.runelite.api.Point point = Perspective.localToCanvas(
-            client,
-            item.tile.getLocalLocation(),
-            client.getPlane());
-
-        if (point == null) {
-            return false;
-        }
-
-        Rectangle target = new Rectangle(point.getX() - 4, point.getY() - 4, 8, 8);
-        return click(target, "loot " + item.name);
-    }
-
-    private boolean click(Rectangle bounds, String label) {
-        if (bounds == null || bounds.width <= 0 || bounds.height <= 0) {
-            return false;
-        }
-
-        int x = bounds.x + bounds.width / 2;
-        int y = bounds.y + bounds.height / 2;
-
-        Canvas canvas = context.getClient().getCanvas();
-        if (canvas == null || x < 0 || y < 0 || x >= canvas.getWidth() || y >= canvas.getHeight()) {
-            return false;
-        }
-
-        long now = System.currentTimeMillis();
-
-        canvas.dispatchEvent(new MouseEvent(
-            canvas, MouseEvent.MOUSE_MOVED, now, 0, x, y, 0, false, MouseEvent.NOBUTTON));
-        canvas.dispatchEvent(new MouseEvent(
-            canvas, MouseEvent.MOUSE_PRESSED, now + 10, 0, x, y, 1, false, MouseEvent.BUTTON1));
-        canvas.dispatchEvent(new MouseEvent(
-            canvas, MouseEvent.MOUSE_RELEASED, now + 35, 0, x, y, 1, false, MouseEvent.BUTTON1));
-        canvas.dispatchEvent(new MouseEvent(
-            canvas, MouseEvent.MOUSE_CLICKED, now + 40, 0, x, y, 1, false, MouseEvent.BUTTON1));
-
-        lastActionAt = now;
-        context.log("Clicked " + label);
-        return true;
-    }
-
-    private Set<String> configuredLoot() {
-        if (lootArea == null) {
-            return Collections.emptySet();
-        }
-
-        Set<String> items = new LinkedHashSet<>();
-        String[] lines = lootArea.getText().split("[\\r\\n,]+");
-
-        for (String line : lines) {
-            String value = line.trim();
-            if (!value.isEmpty()) {
-                items.add(value.toLowerCase(Locale.ROOT));
-            }
-        }
-
-        return items;
-    }
-
-    private String targetName() {
-        return text(targetField);
-    }
-
-    private String foodName() {
-        return text(foodField);
-    }
-
-    private static String text(JTextField field) {
-        return field == null ? "" : field.getText().trim();
-    }
-
-    private static int parseInt(JTextField field, int fallback) {
-        try {
-            return Integer.parseInt(text(field));
-        } catch (NumberFormatException e) {
-            return fallback;
+    private void markAction(String description) {
+        lastActionAt = System.currentTimeMillis();
+        setStatus(description);
+        if (context != null) {
+            context.log(description);
         }
     }
 
@@ -511,15 +410,62 @@ public final class CombatScript implements RuneForgeScript {
         });
     }
 
-    private static final class GroundItemRef {
-        private final Tile tile;
-        private final TileItem item;
-        private final String name;
+    static final class CombatConfig {
+        final String targetName;
+        final int eatAtHp;
+        final String foodName;
+        final Set<String> lootNames;
+        final boolean buryBones;
 
-        private GroundItemRef(Tile tile, TileItem item, String name) {
-            this.tile = tile;
-            this.item = item;
-            this.name = name;
+        private CombatConfig(
+            String targetName,
+            int eatAtHp,
+            String foodName,
+            Set<String> lootNames,
+            boolean buryBones) {
+
+            this.targetName = targetName;
+            this.eatAtHp = eatAtHp;
+            this.foodName = foodName;
+            this.lootNames = lootNames;
+            this.buryBones = buryBones;
+        }
+
+        static CombatConfig defaults() {
+            return from("Sand Crab", "20", "Lobster", "", false);
+        }
+
+        static CombatConfig from(
+            String targetName,
+            String eatAtHp,
+            String foodName,
+            String lootText,
+            boolean buryBones) {
+
+            int hp = 20;
+            try {
+                hp = Integer.parseInt(eatAtHp == null ? "" : eatAtHp.trim());
+            } catch (NumberFormatException ignored) {
+            }
+
+            hp = Math.max(1, Math.min(99, hp));
+
+            Set<String> loot = new LinkedHashSet<>();
+            if (lootText != null) {
+                for (String value : lootText.split("[\\r\\n,]+")) {
+                    String trimmed = value.trim();
+                    if (!trimmed.isEmpty()) {
+                        loot.add(trimmed.toLowerCase(Locale.ROOT));
+                    }
+                }
+            }
+
+            return new CombatConfig(
+                targetName == null ? "" : targetName.trim(),
+                hp,
+                foodName == null ? "" : foodName.trim(),
+                Collections.unmodifiableSet(loot),
+                buryBones);
         }
     }
 }

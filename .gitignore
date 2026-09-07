@@ -1,31 +1,24 @@
 # Build output
 build/
 dist/
-*.class
-*.log
+.gradle/
 
-# IDE
+# Runtime data
+runtime/
+runtime-temp/
+runeforge-data/
+alora-data/
+*.log
+temurin21.zip
+
+# User-supplied third-party client
+client/*.jar
+client/*.zip
+client/*.exe
+
+# IDE / OS
 .idea/
 .vscode/
 *.iml
-
-# OS
 .DS_Store
 Thumbs.db
-
-# Third-party client/launcher binaries
-vendor/*.jar
-!vendor/README.md
-
-# Downloaded/runtime state
-runtime/
-alora-data/
-temurin*.zip
-runtime-temp/
-
-# Local overrides
-local.properties
-
-# User-supplied third-party client binaries
-client/*.jar
-client/*.zip

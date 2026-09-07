@@ -1,74 +1,82 @@
 # Rune Forge
 
-**Current release: v1.0.3**
+**Current release: v1.0.4**
 
-A modular Java script loader with a portable Windows launcher.
-
-Rune Forge keeps the loader separate from individual scripts. Scripts are ordinary JAR files with their own UI and lifecycle, so adding or updating a script does not require rebuilding the loader.
+Rune Forge is a modular Java script loader with a portable Windows launcher.
+The loader and bundled scripts are separated so scripts can be updated without
+changing the loader.
 
 ![Rune Forge banner](assets/banner.png)
 
-## Features
+## What changed in 1.0.4
 
-- Portable Windows launcher
-- Private Temurin Java 21 runtime downloaded on first run
-- Modular script JAR loading
-- Load, start, stop, and unload lifecycle
-- Per-script data directories
-- Central diagnostic logging
-- Example script
-- Combat script with its own configuration window
+- One documented client-launcher location: `client/Client-Launcher.jar`
+- Real Gradle compilation and automated self-tests
+- GitHub Actions build/release audit
+- No compile-time dependency on a private client JAR
+- Runtime client compatibility is isolated behind a reflection bridge
+- Combat actions use the client's normal menu-action method instead of
+  coordinate-based synthetic mouse clicks
+- Runtime-classloader detection uses the Java agent's loaded-class view
+- Visible bootstrap timeout/failure logging
+- Script trust confirmation using SHA-256 fingerprints
+- Safer script lifecycle and Swing/client-thread boundaries
+- Temurin downloads are SHA-256 verified before extraction
 
-## Repository layout
+## Windows release setup
 
-```text
-launcher/       Windows startup scripts
-loader/         Java agent bootstrap and script loader
-script-api/     Public script interface and context
-scripts/        Individual script modules
-packaging/      Build and release scripts
-docs/           Architecture and script-development notes
-assets/         Project artwork
-vendor/         Third-party launcher placeholder only
-```
+Rune Forge does not redistribute a game client or game-client launcher.
 
-## Requirements for building
-
-- Windows
-- JDK 11 or newer with `javac` and `jar`
-- An installed Alora RuneLite client JAR
-
-The build script checks `ALORA_CLIENT_JAR` first and then:
+1. Extract `Rune-Forge-v1.0.4-Windows.zip`.
+2. Obtain a compatible client launcher separately.
+3. Save it exactly as:
 
 ```text
-%USERPROFILE%\alora\client_runelite.jar
+client/Client-Launcher.jar
 ```
 
-Build:
+4. Run:
+
+```text
+Start-RuneForge.cmd
+```
+
+The launcher downloads a private Temurin Java 21 JRE when required. The
+downloaded archive is verified against the SHA-256 checksum returned by the
+Adoptium API before Rune Forge extracts or executes it.
+
+## Building from source
+
+Requirements:
+
+- JDK 11+ (JDK 21 recommended)
+- Gradle 8.10+ for the Gradle build, or PowerShell plus a JDK for the fallback
+  build script
+
+Gradle:
+
+```powershell
+gradle clean build
+```
+
+PowerShell fallback:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\packaging\build.ps1
 ```
 
-## Running locally
+Neither build path requires Alora, RuneLite, Jagex, or another private client
+JAR. Runtime compatibility is discovered dynamically when Rune Forge starts.
 
-Rune Forge does not redistribute Alora's launcher.
-
-Download the official JAR launcher from Alora and save it as:
-
-```text
-vendor\Alora-Launcher.jar
-```
-
-Then build Rune Forge and run:
+Build outputs:
 
 ```text
-launcher\Start-RuneForge.cmd
+dist/RuneForge-Loader.jar
+dist/scripts/RuneForge-Example.jar
+dist/scripts/RuneForge-Combat.jar
 ```
 
-The launcher downloads a private Temurin Java 21 JRE into the project folder if one is not already present.
-
-## Building a portable release
+## Building a Windows release
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\packaging\package-release.ps1
@@ -77,14 +85,26 @@ powershell -ExecutionPolicy Bypass -File .\packaging\package-release.ps1
 This creates:
 
 ```text
-build\Rune-Forge-v1.0.0-Windows.zip
+build/Rune-Forge-v1.0.4-Windows.zip
 ```
+
+The packaging script runs a release audit and rejects unexpected JAR/ZIP files.
+
+## Script trust model
+
+A script JAR executes inside the same JVM as the client. Java does not provide a
+reliable modern in-process sandbox for arbitrary plugin code. Rune Forge
+therefore treats third-party scripts as trusted code.
+
+The first time a script hash is loaded, Rune Forge shows its SHA-256 fingerprint
+and requires explicit confirmation. If the JAR changes, the hash changes and
+Rune Forge asks again.
 
 ## Writing scripts
 
 See [docs/script-development.md](docs/script-development.md).
 
-Each script implements `RuneForgeScript` and declares its entry class in `META-INF/MANIFEST.MF`:
+A script implements `RuneForgeScript` and declares its entry point:
 
 ```text
 Rune-Forge-Script-Class: io.runeforge.scripts.example.ExampleScript
@@ -92,20 +112,10 @@ Rune-Forge-Script-Class: io.runeforge.scripts.example.ExampleScript
 
 ## Third-party software
 
-Rune Forge is not affiliated with RuneLite, Jagex, or Alora. Third-party client and launcher binaries are not part of this repository or the MIT license.
+Rune Forge is not affiliated with RuneLite, Jagex, Alora, Eclipse Adoptium, or
+Gradle. Third-party client binaries are not included in the source or Windows
+release archive.
 
 ## License
 
 MIT. See [LICENSE](LICENSE).
-
-
-## Client requirement
-
-Rune Forge does not ship a game client or game-client launcher. Before using the
-Windows package, place a compatible launcher that you obtained separately at:
-
-```text
-client/Client-Launcher.jar
-```
-
-That file is intentionally excluded from the repository and release archive.

@@ -14,6 +14,13 @@ public final class MyScript implements RuneForgeScript {
 }
 ```
 
-The context provides the RuneLite `Client`, `ClientThread`, `EventBus`, the loader frame, a per-script data directory, and a logger.
+Use `context.getGameClient()` for supported client operations and
+`context.invokeOnClientThread(...)` for work that must run on the client thread.
 
-Keep script-specific UI and behavior inside the script module. The loader should only be responsible for discovery, lifecycle, shared context, and logging.
+Avoid importing a private client fork's classes directly. Keeping script code on
+the Rune Forge bridge allows the public source tree to compile without
+redistributing or depending on third-party client binaries.
+
+Third-party script JARs are trusted code. They share the client JVM and are not
+security-sandboxed, so users are shown a SHA-256 trust prompt before a new or
+changed script is loaded.

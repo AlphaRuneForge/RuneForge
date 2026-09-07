@@ -1,17 +1,13 @@
 package io.runeforge.loader;
 
-import com.google.inject.Injector;
 import io.runeforge.api.RuneForgeContext;
 import io.runeforge.api.RuneForgeScript;
-import net.runelite.api.Client;
-import net.runelite.client.RuneLite;
-import net.runelite.client.callback.ClientThread;
-import net.runelite.client.eventbus.EventBus;
 
 import javax.swing.*;
 import javax.swing.filechooser.FileNameExtensionFilter;
 import java.awt.*;
 import java.io.File;
+import java.lang.reflect.Method;
 import java.net.URL;
 import java.net.URLClassLoader;
 import java.nio.charset.StandardCharsets;
@@ -22,17 +18,19 @@ import java.util.jar.JarFile;
 import java.util.jar.Manifest;
 
 public final class RuneForgeLoader {
-    private static final String VERSION = "1.0.3";
+    private static final String VERSION = "1.0.4";
     private static volatile boolean started;
 
-    private static Client client;
-    private static ClientThread clientThread;
-    private static EventBus eventBus;
+    private static ClassLoader runtimeClassLoader;
+    private static Object client;
+    private static Object clientThread;
+    private static Object eventBus;
 
     private static Path baseDirectory;
     private static Path scriptsDirectory;
     private static Path dataDirectory;
     private static Path logFile;
+    private static ScriptTrustStore trustStore;
 
     private static JFrame frame;
     private static DefaultListModel<String> scriptModel;
@@ -46,11 +44,12 @@ public final class RuneForgeLoader {
     private RuneForgeLoader() {
     }
 
-    public static synchronized void start() {
+    public static synchronized void start(ClassLoader detectedRuntimeClassLoader) {
         if (started) {
             return;
         }
         started = true;
+        runtimeClassLoader = detectedRuntimeClassLoader;
 
         baseDirectory = Paths.get(System.getProperty(
             "runeforge.home",
@@ -60,6 +59,7 @@ public final class RuneForgeLoader {
         scriptsDirectory = baseDirectory.resolve("scripts");
         dataDirectory = baseDirectory.resolve("script-data");
         logFile = baseDirectory.resolve("rune-forge.log");
+        trustStore = new ScriptTrustStore(baseDirectory.resolve("trusted-scripts.sha256"));
 
         try {
             Files.createDirectories(scriptsDirectory);
@@ -68,40 +68,58 @@ public final class RuneForgeLoader {
             log("Unable to create Rune Forge directories: " + rootCause(e));
         }
 
-        Thread init = new Thread(RuneForgeLoader::initializeRuneLite, "RuneForge-Init");
+        Thread init = new Thread(RuneForgeLoader::initializeRuntime, "RuneForge-Init");
         init.setDaemon(true);
         init.start();
     }
 
-    private static void initializeRuneLite() {
+    private static void initializeRuntime() {
         try {
-            Injector injector = null;
+            Class<?> runeLite = Class.forName(
+                "net.runelite.client.RuneLite",
+                false,
+                runtimeClassLoader);
+            Method getInjector = runeLite.getMethod("getInjector");
 
+            Object injector = null;
             for (int attempt = 0; attempt < 240 && injector == null; attempt++) {
-                injector = RuneLite.getInjector();
+                injector = getInjector.invoke(null);
                 if (injector == null) {
                     Thread.sleep(250L);
                 }
             }
 
             if (injector == null) {
-                log("RuneLite injector was not available after startup wait.");
+                fatalUi("RuneLite injector was not available after 60 seconds.");
                 return;
             }
 
-            client = injector.getInstance(Client.class);
-            clientThread = injector.getInstance(ClientThread.class);
-            eventBus = injector.getInstance(EventBus.class);
+            client = injectorInstance(injector, "net.runelite.api.Client");
+            clientThread = injectorInstance(
+                injector,
+                "net.runelite.client.callback.ClientThread");
+            eventBus = injectorInstance(
+                injector,
+                "net.runelite.client.eventbus.EventBus");
 
             if (client == null || clientThread == null || eventBus == null) {
-                log("RuneLite dependencies were incomplete.");
+                fatalUi("The client runtime did not expose all required services.");
                 return;
             }
 
             SwingUtilities.invokeLater(RuneForgeLoader::createUi);
         } catch (Throwable e) {
-            log("Loader initialization failed: " + rootCause(e));
+            fatalUi("Loader initialization failed: " + rootCause(e));
         }
+    }
+
+    private static Object injectorInstance(Object injector, String className)
+        throws Exception {
+
+        Class<?> type = Class.forName(className, false, runtimeClassLoader);
+        Method getInstance = injector.getClass().getMethod("getInstance", Class.class);
+        getInstance.setAccessible(true);
+        return getInstance.invoke(injector, type);
     }
 
     private static void createUi() {
@@ -112,7 +130,7 @@ public final class RuneForgeLoader {
         root.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
 
         JPanel header = new JPanel(new BorderLayout());
-        JLabel title = new JLabel("Rune Forge");
+        JLabel title = new JLabel("Rune Forge " + VERSION);
         title.setFont(title.getFont().deriveFont(Font.BOLD, 18f));
         header.add(title, BorderLayout.WEST);
 
@@ -168,7 +186,7 @@ public final class RuneForgeLoader {
         unloadButton.addActionListener(e -> unloadScript());
 
         frame.setContentPane(root);
-        frame.setSize(590, 530);
+        frame.setSize(620, 540);
         frame.setLocationByPlatform(true);
         frame.setVisible(true);
 
@@ -222,6 +240,28 @@ public final class RuneForgeLoader {
 
         try {
             Path jar = scriptsDirectory.resolve(selected);
+            String sha256 = ScriptTrustStore.sha256(jar);
+
+            if (!trustStore.isTrusted(sha256)) {
+                int choice = JOptionPane.showConfirmDialog(
+                    frame,
+                    "Scripts run inside the same Java process as the client and can access "
+                        + "your account session, files, and network.\n\n"
+                        + "Only continue if you trust this script.\n\n"
+                        + "File: " + selected + "\n"
+                        + "SHA-256: " + sha256,
+                    "Trust script?",
+                    JOptionPane.YES_NO_OPTION,
+                    JOptionPane.WARNING_MESSAGE);
+
+                if (choice != JOptionPane.YES_OPTION) {
+                    setStatus("Script not trusted.");
+                    return;
+                }
+
+                trustStore.trust(sha256);
+            }
+
             String scriptClass = readScriptClass(jar);
 
             scriptClassLoader = new URLClassLoader(
@@ -237,21 +277,25 @@ public final class RuneForgeLoader {
                     scriptClass + " does not implement RuneForgeScript");
             }
 
-            loadedScript = (RuneForgeScript) instance;
-            Path scriptData = dataDirectory.resolve(sanitize(loadedScript.getName()));
+            RuneForgeScript script = (RuneForgeScript) instance;
+            String scriptName = script.getName();
+            Path scriptData = dataDirectory.resolve(sanitize(scriptName));
             Files.createDirectories(scriptData);
 
             RuneForgeContext context = new RuneForgeContext(
                 client,
                 clientThread,
                 eventBus,
+                runtimeClassLoader,
                 frame,
                 scriptData,
-                message -> log("[" + loadedScript.getName() + "] " + message));
+                message -> log("[" + scriptName + "] " + message));
 
-            loadedScript.onLoad(context);
-            setStatus("Loaded: " + loadedScript.getName());
-            log("Loaded " + loadedScript.getName() + " " + loadedScript.getVersion());
+            script.onLoad(context);
+            loadedScript = script;
+
+            setStatus("Loaded: " + scriptName);
+            log("Loaded " + scriptName + " " + script.getVersion());
         } catch (Throwable e) {
             log("Load failed: " + rootCause(e));
             setStatus("Load failed.");
@@ -261,47 +305,55 @@ public final class RuneForgeLoader {
     }
 
     private static void startLoadedScript() {
-        if (loadedScript == null) {
+        RuneForgeScript script = loadedScript;
+        if (script == null) {
             setStatus("Load a script first.");
             return;
         }
 
         try {
-            loadedScript.onStart();
-            setStatus("Running: " + loadedScript.getName());
+            script.onStart();
+            setStatus("Running: " + script.getName());
         } catch (Exception e) {
             log("Start failed: " + rootCause(e));
+            setStatus("Start failed.");
         }
     }
 
     private static void stopLoadedScript() {
-        if (loadedScript == null) {
+        RuneForgeScript script = loadedScript;
+        if (script == null) {
             return;
         }
 
         try {
-            loadedScript.onStop();
-            setStatus("Stopped: " + loadedScript.getName());
+            script.onStop();
+            setStatus("Stopped: " + script.getName());
         } catch (Exception e) {
             log("Stop failed: " + rootCause(e));
+            setStatus("Stop failed.");
         }
     }
 
     private static void unloadScript() {
-        if (loadedScript == null) {
+        RuneForgeScript script = loadedScript;
+        if (script == null) {
             return;
         }
 
+        String scriptName = script.getName();
+
         try {
             try {
-                loadedScript.onStop();
-            } catch (Exception ignored) {
+                script.onStop();
+            } catch (Exception e) {
+                log("Stop during unload failed for " + scriptName + ": " + rootCause(e));
             }
 
-            loadedScript.onUnload();
-            log("Unloaded " + loadedScript.getName());
+            script.onUnload();
+            log("Unloaded " + scriptName);
         } catch (Exception e) {
-            log("Unload failed: " + rootCause(e));
+            log("Unload failed for " + scriptName + ": " + rootCause(e));
         } finally {
             loadedScript = null;
             closeScriptClassLoader();
@@ -346,9 +398,23 @@ public final class RuneForgeLoader {
     }
 
     private static void setStatus(String value) {
-        if (statusLabel != null) {
-            statusLabel.setText(value);
+        if (SwingUtilities.isEventDispatchThread()) {
+            if (statusLabel != null) statusLabel.setText(value);
+        } else {
+            SwingUtilities.invokeLater(() -> {
+                if (statusLabel != null) statusLabel.setText(value);
+            });
         }
+    }
+
+    private static void fatalUi(String message) {
+        log("FATAL: " + message);
+        SwingUtilities.invokeLater(() ->
+            JOptionPane.showMessageDialog(
+                null,
+                message + "\n\nSee " + logFile,
+                "Rune Forge startup failed",
+                JOptionPane.ERROR_MESSAGE));
     }
 
     private static synchronized void log(String message) {

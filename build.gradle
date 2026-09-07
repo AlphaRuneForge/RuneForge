@@ -2,10 +2,138 @@ plugins {
     id 'base'
 }
 
-tasks.register('buildRuneForge') {
-    group = 'build'
-    description = 'Build Rune Forge with packaging/build.ps1 on Windows.'
-    doLast {
-        println 'Run: powershell -ExecutionPolicy Bypass -File packaging/build.ps1'
+def java11 = JavaVersion.VERSION_11
+
+sourceSets {
+    api {
+        java.srcDir 'script-api/src/main/java'
     }
+    bootstrap {
+        java.srcDir 'bootstrap/src/main/java'
+        compileClasspath += sourceSets.loader.output + sourceSets.api.output
+    }
+    loader {
+        java.srcDir 'loader/src/main/java'
+        compileClasspath += sourceSets.api.output
+    }
+    example {
+        java.srcDir 'scripts/example/src/main/java'
+        compileClasspath += sourceSets.api.output
+    }
+    combat {
+        java.srcDir 'scripts/combat/src/main/java'
+        compileClasspath += sourceSets.api.output
+    }
+    selfTest {
+        java.srcDir 'tests/src/main/java'
+        compileClasspath += sourceSets.api.output
+        runtimeClasspath += output + compileClasspath
+    }
+}
+
+tasks.named('compileApiJava', JavaCompile) {
+    options.release = 11
+}
+
+tasks.named('compileLoaderJava', JavaCompile) {
+    dependsOn tasks.named('compileApiJava')
+    options.release = 11
+}
+
+tasks.named('compileBootstrapJava', JavaCompile) {
+    dependsOn tasks.named('compileLoaderJava')
+    options.release = 8
+    classpath = sourceSets.loader.output + sourceSets.api.output
+}
+
+tasks.named('compileExampleJava', JavaCompile) {
+    dependsOn tasks.named('compileApiJava')
+    options.release = 11
+}
+
+tasks.named('compileCombatJava', JavaCompile) {
+    dependsOn tasks.named('compileApiJava')
+    options.release = 11
+}
+
+tasks.named('compileSelfTestJava', JavaCompile) {
+    dependsOn tasks.named('compileApiJava')
+    options.release = 11
+}
+
+def distDir = layout.projectDirectory.dir('dist')
+def scriptsDistDir = layout.projectDirectory.dir('dist/scripts')
+
+tasks.register('loaderJar', Jar) {
+    dependsOn tasks.named('compileApiJava')
+    dependsOn tasks.named('compileLoaderJava')
+    dependsOn tasks.named('compileBootstrapJava')
+    archiveFileName = 'RuneForge-Loader.jar'
+    destinationDirectory = distDir
+    from sourceSets.api.output
+    from sourceSets.loader.output
+    from sourceSets.bootstrap.output
+    manifest {
+        attributes(
+            'Manifest-Version': '1.0',
+            'Premain-Class': 'io.runeforge.loader.RuneForgeBootstrap'
+        )
+    }
+}
+
+tasks.register('exampleJar', Jar) {
+    dependsOn tasks.named('compileExampleJava')
+    archiveFileName = 'RuneForge-Example.jar'
+    destinationDirectory = scriptsDistDir
+    from sourceSets.example.output
+    manifest {
+        attributes(
+            'Manifest-Version': '1.0',
+            'Rune-Forge-Script-Class':
+                'io.runeforge.scripts.example.ExampleScript'
+        )
+    }
+}
+
+tasks.register('combatJar', Jar) {
+    dependsOn tasks.named('compileCombatJava')
+    archiveFileName = 'RuneForge-Combat.jar'
+    destinationDirectory = scriptsDistDir
+    from sourceSets.combat.output
+    manifest {
+        attributes(
+            'Manifest-Version': '1.0',
+            'Rune-Forge-Script-Class':
+                'io.runeforge.scripts.combat.CombatScript'
+        )
+    }
+}
+
+tasks.register('selfTest', JavaExec) {
+    dependsOn tasks.named('compileSelfTestJava')
+    classpath = sourceSets.selfTest.runtimeClasspath
+    mainClass = 'io.runeforge.tests.RuneForgeSelfTest'
+}
+
+tasks.register('cleanDist', Delete) {
+    delete layout.projectDirectory.dir('dist')
+}
+
+tasks.named('clean') {
+    dependsOn tasks.named('cleanDist')
+}
+
+tasks.named('assemble') {
+    dependsOn tasks.named('loaderJar')
+    dependsOn tasks.named('exampleJar')
+    dependsOn tasks.named('combatJar')
+}
+
+tasks.named('check') {
+    dependsOn tasks.named('selfTest')
+}
+
+tasks.named('build') {
+    dependsOn tasks.named('assemble')
+    dependsOn tasks.named('check')
 }
