@@ -42,7 +42,7 @@ public final class CombatScript implements RuneForgeScript {
 
     @Override
     public String getVersion() {
-        return "1.0.5";
+        return "1.0.6";
     }
 
     @Override
@@ -114,7 +114,7 @@ public final class CombatScript implements RuneForgeScript {
     }
 
     private void createUi() {
-        frame = new JFrame("Rune Forge - Combat 1.0.4");
+        frame = new JFrame("Rune Forge - Combat " + getVersion());
         frame.setDefaultCloseOperation(WindowConstants.HIDE_ON_CLOSE);
 
         JPanel form = new JPanel(new GridBagLayout());
@@ -298,7 +298,7 @@ public final class CombatScript implements RuneForgeScript {
 
         RuneForgeClient.NpcRef target = findNearestTarget(client, player, currentConfig.targetName);
         if (target != null && client.attack(target)) {
-            markAction("Attacking " + target.name());
+            markAction("Attack requested: " + target.name());
         } else {
             setStatus("Waiting for " + currentConfig.targetName);
         }

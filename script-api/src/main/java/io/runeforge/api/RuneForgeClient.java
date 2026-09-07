@@ -10,6 +10,7 @@ import java.util.Locale;
 public final class RuneForgeClient {
     private final Object client;
     private final ClassLoader runtimeLoader;
+    private AloraMenuDispatcher aloraDispatcher;
 
     public RuneForgeClient(Object client, ClassLoader runtimeLoader) {
         this.client = client;
@@ -239,6 +240,12 @@ public final class RuneForgeClient {
             runtimeLoader,
             "net.runelite.api.MenuAction",
             actionName);
+
+        if (client.getClass().getName().equals("com.alora.Alora")) {
+            if (aloraDispatcher == null) aloraDispatcher = new AloraMenuDispatcher(runtimeLoader);
+            aloraDispatcher.invoke(client, action, param0, param1, identifier, option, target);
+            return true;
+        }
 
         Method method = Reflection.findCompatibleMethod(
             client.getClass(),
