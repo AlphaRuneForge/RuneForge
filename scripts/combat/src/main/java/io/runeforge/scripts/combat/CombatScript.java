@@ -27,6 +27,15 @@ public final class CombatScript implements RuneForgeScript {
     private volatile long lastActionAt;
     private volatile CombatConfig config = CombatConfig.defaults();
 
+    private volatile CombatDiagnostics diagnostics;
+    private long lastSnapshotAt;
+    private final java.util.Map<String, Long> decisionTimes = new java.util.HashMap<>();
+    private String lastConfig = "";
+    private long actionSequence;
+    private long pendingAt;
+    private String pendingAction;
+    private String pendingInventory;
+
     private JFrame frame;
     private JTextField targetField;
     private JTextField hpField;
@@ -42,12 +51,22 @@ public final class CombatScript implements RuneForgeScript {
 
     @Override
     public String getVersion() {
-        return "1.0.6";
+        return "1.0.9";
     }
 
     @Override
     public void onLoad(RuneForgeContext context) {
         this.context = context;
+        try {
+            diagnostics = new CombatDiagnostics(context.getDataDirectory());
+            debug("SESSION", "version=" + getVersion() + " client=" + context.getRawClient().getClass().getName()
+                + " java=" + System.getProperty("java.version") + " script="
+                + getClass().getProtectionDomain().getCodeSource().getLocation()
+                + " api=" + RuneForgeClient.class.getProtectionDomain().getCodeSource().getLocation());
+            context.log("Detailed combat diagnostics: " + context.getDataDirectory().resolve("combat-debug-0.log"));
+        } catch (Exception e) {
+            context.log("Cannot open combat debug log: " + e);
+        }
         SwingUtilities.invokeLater(this::createUi);
         context.log("Combat script loaded.");
     }
@@ -63,6 +82,10 @@ public final class CombatScript implements RuneForgeScript {
             return;
         }
 
+        lastSnapshotAt = 0;
+        decisionTimes.clear();
+        pendingAction = null;
+        debug("START", "Combat loop starting");
         running = true;
         scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
             Thread thread = new Thread(r, "RuneForge-Combat");
@@ -83,6 +106,7 @@ public final class CombatScript implements RuneForgeScript {
     @Override
     public synchronized void onStop() {
         running = false;
+        debug("STOP", "pending=" + pendingAction);
 
         if (scheduler != null) {
             scheduler.shutdownNow();
@@ -110,6 +134,9 @@ public final class CombatScript implements RuneForgeScript {
         if (oldContext != null) {
             oldContext.log("Combat script unloaded.");
         }
+        CombatDiagnostics oldDiagnostics = diagnostics;
+        diagnostics = null;
+        if (oldDiagnostics != null) oldDiagnostics.close();
         context = null;
     }
 
@@ -241,6 +268,8 @@ public final class CombatScript implements RuneForgeScript {
 
     private synchronized void handleSchedulerFailure(Throwable t) {
         running = false;
+        CombatDiagnostics log = diagnostics;
+        if (log != null) log.error("LOOP_ERROR", t);
         if (scheduler != null) {
             scheduler.shutdownNow();
             scheduler = null;
@@ -253,7 +282,7 @@ public final class CombatScript implements RuneForgeScript {
         setStatus("Stopped after error");
     }
 
-    private void tick() {
+    private synchronized void tick() {
         if (!running || System.currentTimeMillis() - lastActionAt < ACTION_COOLDOWN_MS) {
             return;
         }
@@ -264,9 +293,10 @@ public final class CombatScript implements RuneForgeScript {
         RuneForgeClient client = current.getGameClient();
         RuneForgeClient.PlayerRef player = client.localPlayer();
         CombatConfig currentConfig = config;
+        diagnosticSnapshot(client, player, currentConfig);
 
         if (player == null) {
-            setStatus("Waiting for player");
+            decision("NO_PLAYER", "Waiting for player");
             return;
         }
 
@@ -278,23 +308,34 @@ public final class CombatScript implements RuneForgeScript {
         }
 
         if (player.interacting()) {
+            decision("INTERACTING", "Loot and bury skipped: player interaction is active");
             setStatus("In combat");
             return;
         }
 
         RuneForgeClient.GroundItemRef loot = findNearestLoot(client, currentConfig);
-        if (loot != null && client.take(loot)) {
-            markAction("Taking " + loot.name);
-            return;
+        if (loot != null) {
+            beginAttempt(client, "Take", groundDetail(loot) + " opcode=GROUND_ITEM_THIRD_OPTION");
+            boolean accepted = client.take(loot);
+            debug("DISPATCH_RETURN", "id=" + actionSequence + " returned=" + accepted + " (not server confirmation)");
+            if (accepted) {
+                markAction("Take requested: " + loot.name);
+                return;
+            }
+        } else {
+            decision("NO_LOOT", currentConfig.lootNames.isEmpty() ? "Loot list empty" : "No matching ground item within 12 tiles");
         }
 
         if (currentConfig.buryBones) {
             RuneForgeClient.InventoryItemRef bones = firstInventoryAction(client, null, "Bury");
-            if (bones != null && client.inventoryAction(bones, "Bury")) {
-                markAction("Burying " + bones.name);
+            if (bones != null && dispatchInventory(client, bones, "Bury")) {
+                markAction("Bury requested: " + bones.name);
                 return;
             }
+            decision("NO_BURY_ITEM", "No inventory item exposing Bury was dispatched");
         }
+
+        if (!currentConfig.buryBones) decision("BURY_DISABLED", "Bury bones checkbox is off");
 
         RuneForgeClient.NpcRef target = findNearestTarget(client, player, currentConfig.targetName);
         if (target != null && client.attack(target)) {
@@ -312,7 +353,11 @@ public final class CombatScript implements RuneForgeScript {
         RuneForgeClient.InventoryItemRef item =
             firstInventoryAction(client, name, action);
 
-        return item != null && client.inventoryAction(item, action);
+        if (item == null) {
+            decision("INVENTORY_MISS", "wanted=" + name + " action=" + action);
+            return false;
+        }
+        return dispatchInventory(client, item, action);
     }
 
     private RuneForgeClient.InventoryItemRef firstInventoryAction(
@@ -384,7 +429,129 @@ public final class CombatScript implements RuneForgeScript {
         return best;
     }
 
+    private boolean dispatchInventory(RuneForgeClient client, RuneForgeClient.InventoryItemRef item, String action) {
+        int index = RuneForgeClient.actionIndex(item.actions, action);
+        beginAttempt(client, action, inventoryDetail(item) + " actionIndex=" + index
+            + " opcode=" + (index < 0 ? "NONE" : RuneForgeClient.actionName("ITEM", index)));
+        boolean accepted = client.inventoryAction(item, action);
+        debug("DISPATCH_RETURN", "id=" + actionSequence + " returned=" + accepted + " (not server confirmation)");
+        return accepted;
+    }
+
+    private void beginAttempt(RuneForgeClient client, String action, String details) {
+        if (pendingAction != null) observePending(client, "before next request");
+        pendingAction = action;
+        pendingAt = System.currentTimeMillis();
+        pendingInventory = inventorySnapshot(client);
+        debug("ACTION_REQUEST", "id=" + (++actionSequence) + " action=" + action + " " + details
+            + " inventoryBefore=" + pendingInventory);
+    }
+
+    private void observePending(RuneForgeClient client, String reason) {
+        if (pendingAction == null) return;
+        String after = inventorySnapshot(client);
+        debug("ACTION_OBSERVATION", "id=" + actionSequence + " action=" + pendingAction
+            + " elapsedMs=" + (System.currentTimeMillis() - pendingAt) + " reason=" + reason
+            + " inventorySlotsChanged=" + !after.equals(pendingInventory)
+            + " inventoryAfter=" + after + " (slot changes are evidence, not proof of action success)");
+        pendingAction = null;
+    }
+
+    private void diagnosticSnapshot(RuneForgeClient client, RuneForgeClient.PlayerRef player, CombatConfig c) {
+        String settings = "target=" + c.targetName + " eatAt=" + c.eatAtHp + " food=" + c.foodName
+            + " loot=" + c.lootNames + " bury=" + c.buryBones;
+        if (!settings.equals(lastConfig)) {
+            debug("CONFIG", settings);
+            lastConfig = settings;
+        }
+        long now = System.currentTimeMillis();
+        if (pendingAction != null && now - pendingAt >= 2500) observePending(client, "follow-up");
+        if (now - lastSnapshotAt < 5000) return;
+        lastSnapshotAt = now;
+        long started = System.nanoTime();
+        try {
+            debug("PLAYER", "present=" + (player != null) + " interacting=" + (player != null && player.interacting())
+                + " location=" + (player == null ? "none" : player.worldLocation()) + " hp=" + client.currentHitpoints()
+                + " gameState=" + probe(context.getRawClient(), "getGameState")
+                + " plane=" + probe(context.getRawClient(), "getPlane"));
+            Object rawPlayer = probe(context.getRawClient(), "getLocalPlayer");
+            Object interaction = rawPlayer == null ? null : probe(rawPlayer, "getInteracting");
+            debug("PLAYER_DETAIL", "animation=" + (rawPlayer == null ? "none" : probe(rawPlayer, "getAnimation"))
+                + " interactionType=" + (interaction == null ? "none" : interaction.getClass().getName())
+                + " interactionName=" + (interaction == null ? "none" : probe(interaction, "getName"))
+                + " interactionDead=" + (interaction == null ? "none" : probe(interaction, "isDead")));
+            Object scene = probe(context.getRawClient(), "getScene");
+            Object tiles = scene == null ? null : probe(scene, "getTiles");
+            debug("SCENE", "sceneType=" + (scene == null ? "none" : scene.getClass().getName())
+                + " tiles=" + (tiles == null ? "null" : tiles.getClass().isArray()
+                    ? "planes:" + java.lang.reflect.Array.getLength(tiles) : tiles));
+            debug("INVENTORY", inventorySnapshot(client));
+            java.util.List<RuneForgeClient.GroundItemRef> items = client.groundItems(MAX_LOOT_DISTANCE);
+            StringBuilder ground = new StringBuilder("radius=12 count=" + items.size());
+            int shown = 0;
+            for (RuneForgeClient.GroundItemRef item : items) {
+                if (shown++ >= 100) { ground.append(" [remaining items omitted]"); break; }
+                ground.append(" [").append(groundDetail(item)).append(" match=")
+                    .append(c.lootNames.contains(item.name.toLowerCase(Locale.ROOT))).append(']');
+            }
+            debug("GROUND", ground.toString());
+            debug("GATES", "interacting=" + (player != null && player.interacting())
+                + " lootEnabled=" + !c.lootNames.isEmpty() + " buryEnabled=" + c.buryBones
+                + " priority=eat,interaction-check,loot,bury,attack");
+            debug("SNAPSHOT_END", "durationMs=" + (System.nanoTime() - started) / 1_000_000);
+        } catch (Throwable e) {
+            CombatDiagnostics log = diagnostics;
+            if (log != null) log.error("SNAPSHOT_ERROR", e);
+        }
+    }
+
+    private static Object probe(Object object, String method) {
+        try {
+            java.lang.reflect.Method accessor = object.getClass().getMethod(method);
+            accessor.setAccessible(true);
+            return accessor.invoke(object);
+        }
+        catch (Exception e) { return "unavailable:" + e; }
+    }
+
+    private String inventorySnapshot(RuneForgeClient client) {
+        java.util.List<RuneForgeClient.InventoryItemRef> items;
+        try { items = client.inventoryItems(); }
+        catch (Throwable e) {
+            CombatDiagnostics log = diagnostics;
+            if (log != null) log.error("INVENTORY_READ_ERROR", e);
+            return "unavailable (see INVENTORY_READ_ERROR)";
+        }
+        StringBuilder result = new StringBuilder("occupiedSlots=" + items.size());
+        for (RuneForgeClient.InventoryItemRef item : items) result.append(" [").append(inventoryDetail(item)).append(']');
+        return result.toString();
+    }
+
+    private static String inventoryDetail(RuneForgeClient.InventoryItemRef item) {
+        return "name=" + item.name + " id=" + item.id + " slot=" + item.slot + " widget=" + item.widgetId
+            + " actions=" + java.util.Arrays.toString(item.actions);
+    }
+
+    private static String groundDetail(RuneForgeClient.GroundItemRef item) {
+        return "name=" + item.name + " id=" + item.id + " scene=" + item.sceneX + "," + item.sceneY + " distance=" + item.distance;
+    }
+
+    private void decision(String code, String detail) {
+        long now = System.currentTimeMillis();
+        Long previous = decisionTimes.get(code);
+        if (previous == null || now - previous >= 5000) {
+            debug("DECISION", code + " " + detail);
+            decisionTimes.put(code, now);
+        }
+    }
+
+    private void debug(String event, String detail) {
+        CombatDiagnostics log = diagnostics;
+        if (log != null) log.log(event, detail);
+    }
+
     private void markAction(String description) {
+        debug("ACTION_STATUS", description);
         lastActionAt = System.currentTimeMillis();
         setStatus(description);
         if (context != null) {

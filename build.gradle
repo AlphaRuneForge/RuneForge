@@ -29,6 +29,7 @@ sourceSets.example.compileClasspath += sourceSets.api.output
 sourceSets.combat.compileClasspath += sourceSets.api.output
 sourceSets.selfTest.compileClasspath += sourceSets.api.output
 sourceSets.selfTest.runtimeClasspath += sourceSets.api.output + sourceSets.selfTest.output
+sourceSets.selfTest.runtimeClasspath += sourceSets.combat.output
 
 tasks.named('compileApiJava', JavaCompile) {
     options.release = 11
@@ -106,9 +107,15 @@ tasks.register('combatJar', Jar) {
 }
 
 tasks.register('selfTest', JavaExec) {
-    dependsOn tasks.named('compileSelfTestJava')
+    dependsOn tasks.named('compileSelfTestJava'), tasks.named('compileCombatJava')
     classpath = sourceSets.selfTest.runtimeClasspath
     mainClass = 'io.runeforge.tests.RuneForgeSelfTest'
+}
+
+tasks.register('combatDiagnosticsTest', JavaExec) {
+    dependsOn tasks.named('compileSelfTestJava'), tasks.named('compileCombatJava')
+    classpath = sourceSets.selfTest.runtimeClasspath
+    mainClass = 'io.runeforge.tests.CombatDiagnosticsTest'
 }
 
 tasks.register('cleanDist', Delete) {
@@ -127,4 +134,5 @@ tasks.named('assemble') {
 
 tasks.named('check') {
     dependsOn tasks.named('selfTest')
+    dependsOn tasks.named('combatDiagnosticsTest')
 }

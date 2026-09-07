@@ -56,6 +56,9 @@ if ($LASTEXITCODE -ne 0) { throw "Test compilation failed." }
 & java -cp "$Build\api;$Build\tests" io.runeforge.tests.RuneForgeSelfTest
 if ($LASTEXITCODE -ne 0) { throw "Self-tests failed." }
 
+& java -cp "$Build\api;$Build\combat;$Build\tests" io.runeforge.tests.CombatDiagnosticsTest
+if ($LASTEXITCODE -ne 0) { throw "Combat diagnostic tests failed." }
+
 Copy-Item -Recurse "$Build\api\*" "$Build\loader"
 Copy-Item -Recurse "$Build\bootstrap\*" "$Build\loader"
 

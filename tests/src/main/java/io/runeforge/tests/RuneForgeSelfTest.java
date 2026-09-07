@@ -13,6 +13,7 @@ public final class RuneForgeSelfTest {
         testInventoryActionSelection();
         testNpcAttackSelection();
         testGroundItemTakeSelection();
+        GroundItemsTest.main(args);
         System.out.println("Rune Forge self-tests passed.");
     }
 
@@ -54,8 +55,8 @@ public final class RuneForgeSelfTest {
     }
 
     private static void testGroundItemTakeSelection() {
-        assertEquals("GROUND_ITEM_FIRST_OPTION",
-            RuneForgeClient.actionName("GROUND_ITEM", 0));
+        assertEquals("GROUND_ITEM_THIRD_OPTION",
+            RuneForgeClient.actionName("GROUND_ITEM", 2));
     }
 
     private static void assertEquals(Object expected, Object actual) {

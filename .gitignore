@@ -22,3 +22,4 @@ client/*.exe
 *.iml
 .DS_Store
 Thumbs.db
+docs/combat-diagnostics.md

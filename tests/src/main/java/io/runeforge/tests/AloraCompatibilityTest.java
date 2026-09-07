@@ -17,6 +17,7 @@ public final class AloraCompatibilityTest {
         URL[] urls = {Paths.get(args[0]).toUri().toURL()};
         try (URLClassLoader loader = new URLClassLoader(urls, AloraCompatibilityTest.class.getClassLoader())) {
             adapter.newInstance(loader);
+            GroundItemsTest.verifyTake(loader);
         }
         try (URLClassLoader changed = new URLClassLoader(urls, AloraCompatibilityTest.class.getClassLoader()) {
             @Override public InputStream getResourceAsStream(String name) {

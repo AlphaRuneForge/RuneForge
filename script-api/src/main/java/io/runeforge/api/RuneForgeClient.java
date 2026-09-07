@@ -127,8 +127,7 @@ public final class RuneForgeClient {
                     int sceneX = Reflection.intValue(Reflection.invoke(scenePoint, "getX"), -1);
                     int sceneY = Reflection.intValue(Reflection.invoke(scenePoint, "getY"), -1);
 
-                    for (Object item : Reflection.asList(
-                        Reflection.invoke(tile, "getGroundItems"))) {
+                    for (Object item : tileItems(tile)) {
 
                         int id = Reflection.intValue(Reflection.invoke(item, "getId"), -1);
                         if (id <= 0) continue;
@@ -169,13 +168,33 @@ public final class RuneForgeClient {
         if (item == null || item.sceneX < 0 || item.sceneY < 0) return false;
 
         return menuAction(
-            "GROUND_ITEM_FIRST_OPTION",
+            "GROUND_ITEM_THIRD_OPTION",
             item.sceneX,
             item.sceneY,
             item.id,
             0,
             "Take",
             item.name);
+    }
+
+    private List<Object> tileItems(Object tile) {
+        List<Object> items = Reflection.asList(Reflection.invoke(tile, "getGroundItems"));
+        if (!items.isEmpty()) return items;
+        // Some clients expose a stub getGroundItems() but populate the visible item layer.
+        Method layerMethod = Reflection.findCompatibleMethod(tile.getClass(), "getItemLayer");
+        if (layerMethod == null) return items;
+        Object layer = Reflection.invoke(tile, "getItemLayer");
+        if (layer == null) return items;
+        List<Object> visible = new ArrayList<>();
+        java.util.Set<Object> seen = Collections.newSetFromMap(new java.util.IdentityHashMap<>());
+        for (String accessor : new String[]{"getBottom", "getMiddle", "getTop"}) {
+            Object renderable = Reflection.invoke(layer, accessor);
+            if (renderable != null && seen.add(renderable)
+                && Reflection.findCompatibleMethod(renderable.getClass(), "getId") != null) {
+                visible.add(renderable);
+            }
+        }
+        return visible;
     }
 
     public boolean inventoryAction(InventoryItemRef item, String option) {
