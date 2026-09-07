@@ -10,7 +10,7 @@ public final class GroundItemsTest {
         RuneForgeClient client = new RuneForgeClient(raw, GroundItemsTest.class.getClassLoader());
         List<RuneForgeClient.GroundItemRef> items = client.groundItems(12);
         if (items.size() != 1 || items.get(0).id != 526 || !items.get(0).name.equals("Bones")
-            || items.get(0).sceneX != 3 || items.get(0).sceneY != 4) {
+            || items.get(0).sceneX != 27 || items.get(0).sceneY != 28) {
             throw new AssertionError("Empty ground API must fall back to layer without duplicates");
         }
         raw.scene.tile.items = Collections.singletonList(new Item(995));
@@ -28,7 +28,7 @@ public final class GroundItemsTest {
         RuneForgeClient client = new RuneForgeClient(raw, runtime);
         if (!client.take(client.groundItems(12).get(0))
             || !"GROUND_ITEM_FIRST_OPTION".equals(String.valueOf(raw.action))
-            || raw.param0 != 3 || raw.param1 != 4 || raw.identifier != 526
+            || raw.param0 != 27 || raw.param1 != 28 || raw.identifier != 526
             || !"Take".equals(raw.option) || !"<col=ff9040>Bones".equals(raw.target)) {
             throw new AssertionError("Pickup must dispatch first option with scene coordinates and item ID");
         }
@@ -49,6 +49,7 @@ public final class GroundItemsTest {
         final Scene scene = new Scene();
         public Player getLocalPlayer() { return new Player(); }
         public Scene getScene() { return scene; }
+        public int getSceneOffset() { return 24; }
         public Composition getItemComposition(int id) { return new Composition(id); }
     }
     public static final class Player { public Point getWorldLocation() { return new Point(); } }
@@ -61,6 +62,8 @@ public final class GroundItemsTest {
     public static final class Scene {
         final Tile tile = new Tile();
         public Tile[][][] getTiles() { return new Tile[][][]{{{tile}}}; }
+        public int getBaseX() { return 0; }
+        public int getBaseY() { return 0; }
     }
     public static final class Tile {
         final Point point = new Point();

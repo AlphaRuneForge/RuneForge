@@ -69,11 +69,32 @@ final class AloraMenuDispatcher {
             + " identifier=" + Reflection.intValue(Reflection.invoke(entry, "getIdentifier"), -1)
             + " param0=" + Reflection.intValue(Reflection.invoke(entry, "getParam0"), -1)
             + " param1=" + Reflection.intValue(Reflection.invoke(entry, "getParam1"), -1)
-            + " widgetId=" + Reflection.intValue(Reflection.invoke(entry, "getWidgetId"), -1)
-            + " itemId=" + Reflection.intValue(Reflection.invoke(entry, "getItemId"), -1)
+            + " widgetId=" + optionalInt(entry, "getWidgetId")
+            + " itemId=" + optionalInt(entry, "getItemId")
             + " requestedWorldViewId=" + requestedWorldId
-            + " entryWorldViewId=" + Reflection.intValue(Reflection.invoke(entry, "getWorldViewId"), -1)
-            + " forceLeftClick=" + String.valueOf(Reflection.invoke(entry, "isForceLeftClick"));
+            + " entryWorldViewId=" + optionalInt(entry, "getWorldViewId")
+            + " forceLeftClick=" + optionalValue(entry, "isForceLeftClick");
+    }
+
+    private static String optionalInt(Object target, String method) {
+        Object value = optionalInvoke(target, method);
+        return value instanceof Number ? Integer.toString(((Number) value).intValue()) : "n/a";
+    }
+
+    private static String optionalValue(Object target, String method) {
+        Object value = optionalInvoke(target, method);
+        return value == null ? "n/a" : String.valueOf(value);
+    }
+
+    private static Object optionalInvoke(Object target, String method) {
+        try {
+            Method found = Reflection.findCompatibleMethod(target.getClass(), method);
+            if (found == null) return null;
+            found.setAccessible(true);
+            return found.invoke(target);
+        } catch (ReflectiveOperationException | RuntimeException ignored) {
+            return null;
+        }
     }
 
     private static String quote(Object value) {

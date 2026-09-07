@@ -124,9 +124,16 @@ public final class RuneForgeClient {
                     int distance = distance(local.worldLocation(), tileLocation);
                     if (distance < 0 || distance > maximumDistance) continue;
 
-                    Object scenePoint = Reflection.invoke(tile, "getSceneLocation");
-                    int sceneX = Reflection.intValue(Reflection.invoke(scenePoint, "getX"), -1);
-                    int sceneY = Reflection.intValue(Reflection.invoke(scenePoint, "getY"), -1);
+                    // Alora expanded-map scenes expose menu coordinates shifted by
+                    // Alora#getSceneOffset(). Tile/world coordinates alone are lower by
+                    // that padding amount (24 tiles in the observed client session).
+                    int worldX = Reflection.intValue(Reflection.invoke(tileLocation, "getX"), -1);
+                    int worldY = Reflection.intValue(Reflection.invoke(tileLocation, "getY"), -1);
+                    int baseX = Reflection.intValue(Reflection.invoke(scene, "getBaseX"), 0);
+                    int baseY = Reflection.intValue(Reflection.invoke(scene, "getBaseY"), 0);
+                    int sceneOffset = Reflection.intValue(Reflection.invoke(client, "getSceneOffset"), 0);
+                    int sceneX = worldX < 0 ? x + sceneOffset : worldX - baseX + sceneOffset;
+                    int sceneY = worldY < 0 ? y + sceneOffset : worldY - baseY + sceneOffset;
 
                     for (Object item : tileItems(tile)) {
 

@@ -51,7 +51,7 @@ public final class CombatScript implements RuneForgeScript {
 
     @Override
     public String getVersion() {
-        return "1.0.11";
+        return "1.0.16";
     }
 
     @Override

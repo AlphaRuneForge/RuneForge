@@ -13,12 +13,13 @@ import java.net.URLClassLoader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
 import java.time.OffsetDateTime;
+import java.util.function.Consumer;
 import java.util.jar.Attributes;
 import java.util.jar.JarFile;
 import java.util.jar.Manifest;
 
 public final class RuneForgeLoader {
-    private static final String VERSION = "1.0.7";
+    private static final String VERSION = "1.0.12";
     private static volatile boolean started;
 
     private static ClassLoader runtimeClassLoader;
@@ -30,6 +31,8 @@ public final class RuneForgeLoader {
     private static Path scriptsDirectory;
     private static Path dataDirectory;
     private static Path logFile;
+    private static Path menuDiagnosticFile;
+    private static Object menuDiagnosticSubscriber;
     private static ScriptTrustStore trustStore;
 
     private static JFrame frame;
@@ -59,6 +62,7 @@ public final class RuneForgeLoader {
         scriptsDirectory = baseDirectory.resolve("scripts");
         dataDirectory = baseDirectory.resolve("script-data");
         logFile = baseDirectory.resolve("rune-forge.log");
+        menuDiagnosticFile = baseDirectory.resolve("menu-click-debug.log");
         trustStore = new ScriptTrustStore(baseDirectory.resolve("trusted-scripts.sha256"));
 
         try {
@@ -107,10 +111,79 @@ public final class RuneForgeLoader {
                 return;
             }
 
+            registerMenuDiagnostics();
             SwingUtilities.invokeLater(RuneForgeLoader::createUi);
         } catch (Throwable e) {
             fatalUi("Loader initialization failed: " + rootCause(e));
         }
+    }
+
+
+    private static void registerMenuDiagnostics() {
+        try {
+            Class<?> eventType = Class.forName(
+                "net.runelite.api.events.MenuOptionClicked", false, runtimeClassLoader);
+            Method register = eventBus.getClass().getMethod(
+                "register", Class.class, Consumer.class, float.class);
+
+            Consumer<Object> consumer = RuneForgeLoader::recordMenuOptionClicked;
+            menuDiagnosticSubscriber = register.invoke(eventBus, eventType, consumer, -1000.0f);
+            log("Menu click diagnostics: " + menuDiagnosticFile);
+        } catch (Throwable e) {
+            log("Menu click diagnostics unavailable: " + rootCause(e));
+        }
+    }
+
+    private static void recordMenuOptionClicked(Object event) {
+        try {
+            Object menuEntry = optionalInvoke(event, "getMenuEntry");
+            String line = OffsetDateTime.now()
+                + " thread=" + Thread.currentThread().getName()
+                + " option=" + quoted(optionalInvoke(event, "getMenuOption"))
+                + " target=" + quoted(optionalInvoke(event, "getMenuTarget"))
+                + " action=" + String.valueOf(optionalInvoke(event, "getMenuAction"))
+                + " id=" + optionalInt(event, "getId")
+                + " param0=" + optionalInt(event, "getParam0")
+                + " actionParam=" + optionalInt(event, "getActionParam")
+                + " param1=" + optionalInt(event, "getParam1")
+                + " param1Alora=" + optionalInt(event, "getParam1Alora")
+                + " widgetId=" + optionalInt(event, "getWidgetId")
+                + " itemId=" + optionalInt(event, "getItemId")
+                + " itemOp=" + String.valueOf(optionalInvoke(event, "isItemOp"))
+                + " consumed=" + String.valueOf(optionalInvoke(event, "isConsumed"))
+                + " entryWorldViewId=" + optionalInt(menuEntry, "getWorldViewId")
+                + " entryIdentifier=" + optionalInt(menuEntry, "getIdentifier")
+                + " entryParam0=" + optionalInt(menuEntry, "getParam0")
+                + " entryParam1=" + optionalInt(menuEntry, "getParam1");
+
+            Files.write(
+                menuDiagnosticFile,
+                (line + System.lineSeparator()).getBytes(StandardCharsets.UTF_8),
+                StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+        } catch (Throwable ignored) {
+            // Diagnostics must never interfere with a client menu action.
+        }
+    }
+
+    private static Object optionalInvoke(Object target, String methodName) {
+        if (target == null) return null;
+        try {
+            Method method = target.getClass().getMethod(methodName);
+            method.setAccessible(true);
+            return method.invoke(target);
+        } catch (Throwable ignored) {
+            return null;
+        }
+    }
+
+    private static String optionalInt(Object target, String methodName) {
+        Object value = optionalInvoke(target, methodName);
+        return value instanceof Number ? Integer.toString(((Number) value).intValue()) : "n/a";
+    }
+
+    private static String quoted(Object value) {
+        if (value == null) return "null";
+        return "\"" + String.valueOf(value).replace("\"", "\\\"") + "\"";
     }
 
     private static Object injectorInstance(Object injector, String className)
