@@ -1,0 +1,27 @@
+# Build output
+build/
+dist/
+*.class
+*.log
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Third-party client/launcher binaries
+vendor/*.jar
+!vendor/README.md
+
+# Downloaded/runtime state
+runtime/
+alora-data/
+temurin*.zip
+runtime-temp/
+
+# Local overrides
+local.properties

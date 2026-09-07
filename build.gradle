@@ -1,0 +1,11 @@
+plugins {
+    id 'base'
+}
+
+tasks.register('buildRuneForge') {
+    group = 'build'
+    description = 'Build Rune Forge with packaging/build.ps1 on Windows.'
+    doLast {
+        println 'Run: powershell -ExecutionPolicy Bypass -File packaging/build.ps1'
+    }
+}
