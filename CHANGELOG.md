@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.2
+
+- Fixed Windows startup failure caused by assigning to PowerShell's read-only
+  automatic `$HOME` variable.
+- Renamed the portable data-path variable to `$RuneForgeHome`.
+- Rebuilt the source and Windows release from the corrected launcher.
+
 ## 1.0.1
 
 - Made the GitHub source tree and packaged Windows release use the same layout.

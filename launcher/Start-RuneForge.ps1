@@ -4,10 +4,10 @@ $ProgressPreference = "SilentlyContinue"
 $Root = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 $Runtime = Join-Path $Root "runtime"
 $JavaExe = Join-Path $Runtime "bin\java.exe"
-$Home = Join-Path $Root "alora-data"
-$ScriptsDir = Join-Path $Home "scripts"
+$RuneForgeHome = Join-Path $Root "alora-data"
+$ScriptsDir = Join-Path $RuneForgeHome "scripts"
 $LoaderSource = Join-Path $Root "dist\RuneForge-Loader.jar"
-$LoaderJar = Join-Path $Home "RuneForge-Loader.jar"
+$LoaderJar = Join-Path $RuneForgeHome "RuneForge-Loader.jar"
 $AloraLauncher = Join-Path $Root "vendor\Alora-Launcher.jar"
 $RuntimeZip = Join-Path $Root "temurin21.zip"
 $RuntimeTemp = Join-Path $Root "runtime-temp"
@@ -70,8 +70,8 @@ function Run-NativeProcess([string]$FileName, [string]$Arguments, [string]$Label
 }
 
 try {
-    Log "Rune Forge v1.0.1 startup"
-    New-Item -ItemType Directory -Force -Path $Home | Out-Null
+    Log "Rune Forge v1.0.2 startup"
+    New-Item -ItemType Directory -Force -Path $RuneForgeHome | Out-Null
     New-Item -ItemType Directory -Force -Path $ScriptsDir | Out-Null
 
     if (-not (Test-Path $LoaderSource)) {
@@ -84,7 +84,7 @@ try {
 
     Copy-Item -Force $LoaderSource $LoaderJar
     Log "Loader installed: $LoaderJar"
-    Log "Loader data directory: $Home"
+    Log "Loader data directory: $RuneForgeHome"
 
     $BuiltScripts = Join-Path $Root "dist\scripts"
     if (-not (Test-Path $BuiltScripts)) {
@@ -149,7 +149,7 @@ try {
         Fail "Java runtime test failed." 21
     }
 
-    $env:JAVA_TOOL_OPTIONS = "-javaagent:`"$LoaderJar`" -Druneforge.home=`"$Home`""
+    $env:JAVA_TOOL_OPTIONS = "-javaagent:`"$LoaderJar`" -Druneforge.home=`"$RuneForgeHome`""
     Log "JAVA_TOOL_OPTIONS configured."
     Log "Starting third-party launcher: $AloraLauncher"
     $launcherArgument = '-jar "' + $AloraLauncher + '"'

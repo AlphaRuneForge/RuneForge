@@ -1,6 +1,6 @@
 # Rune Forge
 
-**Current release: v1.0.1**
+**Current release: v1.0.2**
 
 A modular Java script loader with a portable Windows launcher.
 

@@ -3,8 +3,8 @@
 $Root = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 $Dist = Join-Path $Root "dist"
 $ReleaseRoot = Join-Path $Root "build\release"
-$Release = Join-Path $ReleaseRoot "Rune-Forge-v1.0.1"
-$Zip = Join-Path $Root "build\Rune-Forge-v1.0.1-Windows.zip"
+$Release = Join-Path $ReleaseRoot "Rune-Forge-v1.0.2"
+$Zip = Join-Path $Root "build\Rune-Forge-v1.0.2-Windows.zip"
 
 & "$Root\packaging\build.ps1"
 
@@ -42,7 +42,7 @@ if (Test-Path "$Root\assets") {
 }
 
 @"
-RUNE FORGE v1.0.1 - WINDOWS RELEASE
+RUNE FORGE v1.0.2 - WINDOWS RELEASE
 
 1. Extract the entire ZIP to a normal folder.
 2. Run Start-RuneForge.cmd.
