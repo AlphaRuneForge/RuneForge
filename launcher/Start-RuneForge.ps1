@@ -88,7 +88,7 @@ function Run-NativeProcess([string]$FileName, [string]$Arguments, [string]$Label
 }
 
 try {
-    Log "Rune Forge v1.0.5 startup"
+    Log "Rune Forge v1.0.6 startup"
     New-Item -ItemType Directory -Force -Path $RuneForgeHome,$ScriptsDir | Out-Null
 
     if (-not (Test-Path $LoaderSource)) {
@@ -106,11 +106,30 @@ try {
         Fail "Missing dist\scripts." 12
     }
 
-    Get-ChildItem $BuiltScripts -Filter "*.jar" -File |
-        ForEach-Object {
-            Copy-Item -Force $_.FullName (Join-Path $ScriptsDir $_.Name)
-            Log "Installed script: $($_.Name)"
-        }
+    # Keep RuneForge-managed scripts synchronized with dist\scripts.
+    # Patch ZIP extraction does not delete old files, so version-stamped jars
+    # from older revisions can remain in BOTH dist\scripts and the runtime
+    # scripts directory. Never treat those stale jars as current scripts.
+    $VersionedManagedPattern = '^RuneForge-(Combat|Example)-v\d+(?:\.\d+)+\.jar$'
+
+    foreach ($Dir in @($BuiltScripts, $ScriptsDir)) {
+        Get-ChildItem $Dir -Filter "RuneForge-*.jar" -File -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -match $VersionedManagedPattern } |
+            ForEach-Object {
+                Remove-Item -Force $_.FullName
+                Log "Removed stale versioned script: $($_.Name)"
+            }
+    }
+
+    # Only canonical, unversioned jars in dist\scripts are deployable.
+    $BuiltScriptFiles = @(Get-ChildItem $BuiltScripts -Filter "RuneForge-*.jar" -File |
+        Where-Object { $_.Name -notmatch '-v\d+(?:\.\d+)+\.jar$' })
+
+    foreach ($BuiltScript in $BuiltScriptFiles) {
+        $Destination = Join-Path $ScriptsDir $BuiltScript.Name
+        Copy-Item -Force $BuiltScript.FullName $Destination
+        Log "Installed script: $($BuiltScript.Name)"
+    }
 
     if (-not (Test-Path $JavaExe)) {
         Log "Resolving Temurin Java 21 JRE metadata."
